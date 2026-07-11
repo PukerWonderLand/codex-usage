@@ -976,9 +976,19 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
   if (!timestamps.length) {
     return { start: null, end: null, preset: "all" };
   }
+  let earliestTimestamp = timestamps[0];
+  let latestTimestamp = timestamps[0];
+  for (const timestamp of timestamps) {
+    if (timestamp < earliestTimestamp) {
+      earliestTimestamp = timestamp;
+    }
+    if (timestamp > latestTimestamp) {
+      latestTimestamp = timestamp;
+    }
+  }
   return {
-    start: startOfLocalDay(new Date(Math.min(...timestamps))),
-    end: endOfLocalDay(new Date(Math.max(...timestamps))),
+    start: startOfLocalDay(new Date(earliestTimestamp)),
+    end: endOfLocalDay(new Date(latestTimestamp)),
     preset: "all",
   };
 }

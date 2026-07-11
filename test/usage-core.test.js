@@ -88,6 +88,38 @@ function usageIndex(events) {
   };
 }
 
+test("summarizeUsageIndex 支持大规模索引的全部日期范围", () => {
+  const eventCount = 170_000;
+  const start = new Date(2026, 0, 2, 8).getTime();
+  const end = new Date(2026, 6, 11, 18).getTime();
+  const events = Array.from({ length: eventCount }, (_, index) => ({
+    ...indexedUsageEvent(index === eventCount - 1 ? end : start, 1),
+    s: index,
+  }));
+  const index = {
+    generatedAt: "2026-07-12T00:00:00.000Z",
+    homes: [],
+    warnings: [],
+    strings: ["main-codex", "CLI", "Main Codex", "gpt-5.5", "/work/project"],
+    events,
+    sessionCount: eventCount,
+  };
+
+  const summary = summarizeUsageIndex(index, { preset: "all", bucket: "day" });
+  const rangeStart = new Date(summary.range.start);
+  const rangeEnd = new Date(summary.range.end);
+
+  assert.equal(summary.eventCount, eventCount);
+  assert.deepEqual(
+    [rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate(), rangeStart.getHours()],
+    [2026, 0, 2, 0],
+  );
+  assert.deepEqual(
+    [rangeEnd.getFullYear(), rangeEnd.getMonth(), rangeEnd.getDate(), rangeEnd.getHours(), rangeEnd.getMinutes()],
+    [2026, 6, 11, 23, 59],
+  );
+});
+
 test("parseSessionFile derives incremental token events from cumulative totals", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "codex-usage-"));
   const file = path.join(root, "rollout.jsonl");
