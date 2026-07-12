@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,13 +55,14 @@ async function makeFixtureHome() {
     homeDir: fakeHome,
     // Keep server tests independent from the developer's real ~/.codex-usage/imports.json.
     importStoreFile: path.join(fakeHome, ".codex-usage", "imports.json"),
+    databaseFile: path.join(fakeHome, ".codex-usage", "usage-index.sqlite"),
     sessionFile,
   };
 }
 
 test("server serves the dashboard and usage API", async () => {
-  const { homeDir, importStoreFile } = await makeFixtureHome();
-  const server = createUsageServer({ homeDir, importStoreFile });
+  const { homeDir, importStoreFile, databaseFile } = await makeFixtureHome();
+  const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
 
@@ -96,6 +97,7 @@ test("server serves the dashboard and usage API", async () => {
     assert.equal(json.metadata.homes[0].status, "active");
     assert.equal(json.metadata.homes[0].eventCount, 1);
     assert.equal(json.report, undefined);
+    assert.ok((await stat(databaseFile)).size > 0);
 
     const detailed = await fetch(`${baseUrl}/api/usage?detail=full`).then((response) => response.json());
     assert.equal(detailed.report.events[0].channel, "CLI");
@@ -229,6 +231,12 @@ test("server imports project usage log directories and refreshes usage data", as
       ],
     );
     assert.equal(after.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot), true);
+
+    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(projectRoot)}`, { method: "DELETE" });
+    const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+
+    assert.equal(removed.summary.totals.total, 123);
+    assert.equal(removed.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot), false);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

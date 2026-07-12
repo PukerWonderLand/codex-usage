@@ -40,7 +40,7 @@ Requests made directly through the OpenAI API are not counted unless they are wr
 
 ## Requirements
 
-Node.js `>=22` is required.
+Node.js `>=22.13` is required for the built-in SQLite index.
 
 ```bash
 node --version
@@ -115,6 +115,8 @@ Restart the background gateway:
 ```bash
 codex-usage restart
 ```
+
+The dashboard and `summary` keep a lightweight index at `~/.codex-usage/usage-index.sqlite`. The first run builds it row by row; later refreshes only rebuild changed log files, so historical events do not remain in the Node.js heap. To rebuild from scratch, stop the service, remove that SQLite file, and start the gateway again.
 
 Stop services registered by this tool:
 

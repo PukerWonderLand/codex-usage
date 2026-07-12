@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -157,6 +157,7 @@ test("cli summary --json returns lightweight summary metadata without full repor
   assert.equal(parsed.summary.totals.total, 77);
   assert.equal(parsed.metadata.eventCount, 1);
   assert.equal(parsed.report, undefined);
+  assert.ok((await stat(path.join(homeDir, ".codex-usage", "usage-index.sqlite"))).size > 0);
 });
 
 test("cli gateway starts a background usage server and returns", async () => {

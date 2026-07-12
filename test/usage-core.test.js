@@ -12,6 +12,7 @@ import {
   discoverCodexHomes,
   discoverUsageSources,
   parseSessionFile,
+  streamUsageFileEvents,
   summarizeUsage,
   summarizeUsageIndex,
   usageIndexMetadata,
@@ -87,6 +88,56 @@ function usageIndex(events) {
     sessionCount: events.length,
   };
 }
+
+test("streamUsageFileEvents 逐条输出标准化会话事件", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-usage-stream-"));
+  const file = path.join(root, "rollout.jsonl");
+  await writeFile(
+    file,
+    jsonl([
+      {
+        timestamp: "2026-07-12T01:00:00.000Z",
+        type: "session_meta",
+        payload: { id: "stream-session", source: "cli", originator: "codex-tui", cwd: "/work/stream" },
+      },
+      tokenRow("2026-07-12T01:01:00.000Z", 100, 80, 20, 20),
+      tokenRow("2026-07-12T01:02:00.000Z", 160, 120, 30, 40),
+    ]),
+  );
+  const source = { id: "main", label: "Main Codex", path: root, kind: "main" };
+  const events = [];
+
+  await streamUsageFileEvents(file, source, (event) => events.push(event));
+
+  assert.deepEqual(
+    events.map((event) => ({
+      timestampMs: event.timestampMs,
+      sessionId: event.sessionId,
+      homeId: event.homeId,
+      channel: event.channel,
+      project: event.project,
+      total: event.usage.total,
+    })),
+    [
+      {
+        timestampMs: Date.parse("2026-07-12T01:01:00.000Z"),
+        sessionId: "stream-session",
+        homeId: "main",
+        channel: "CLI",
+        project: "/work/stream",
+        total: 100,
+      },
+      {
+        timestampMs: Date.parse("2026-07-12T01:02:00.000Z"),
+        sessionId: "stream-session",
+        homeId: "main",
+        channel: "CLI",
+        project: "/work/stream",
+        total: 60,
+      },
+    ],
+  );
+});
 
 test("summarizeUsageIndex 支持大规模索引的全部日期范围", () => {
   const eventCount = 170_000;

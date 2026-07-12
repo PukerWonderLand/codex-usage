@@ -41,7 +41,7 @@ Codex Usage 是一个本地优先的 Codex token 用量分析工具。它会读�
 
 ## 环境要求
 
-需要 Node.js `>=22`。
+需要 Node.js `>=22.13`，以便直接使用内置 SQLite 索引。
 
 ```bash
 node --version
@@ -116,6 +116,8 @@ codex-usage gateway
 ```bash
 codex-usage restart
 ```
+
+仪表盘和 `summary` 会把轻量索引保存在 `~/.codex-usage/usage-index.sqlite`。首次运行会逐行建立索引，之后只重建发生变化的日志文件，不会把全部历史事件长期保存在 Node.js 内存中。需要完全重建时，可以停止服务后删除该 SQLite 文件，再重新启动 gateway。
 
 停止通过本工具登记的服务：
 

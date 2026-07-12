@@ -1657,7 +1657,7 @@ async function checkForUpdates() {
     const status = await response.json();
     if (status.changed) {
       setAutoRefreshStatus("检测到更新，正在刷新...");
-      await loadUsage({ force: true });
+      await loadUsage();
       return;
     }
     setAutoRefreshStatus(autoRefreshReadyMessage(status.checkedAt));

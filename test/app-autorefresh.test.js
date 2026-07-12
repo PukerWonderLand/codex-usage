@@ -20,6 +20,8 @@ test("auto refresh keeps checking while the page is hidden", async () => {
   );
 
   assert.doesNotMatch(checkSource, /document\.hidden/);
+  assert.doesNotMatch(checkSource, /loadUsage\(\{ force: true \}\)/);
+  assert.match(checkSource, /await loadUsage\(\)/);
   assert.doesNotMatch(startSource, /document\.hidden/);
   assert.doesNotMatch(visibilitySource, /stopAutoRefresh/);
   assert.match(visibilitySource, /checkForUpdates\(\)/);

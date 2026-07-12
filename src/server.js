@@ -9,13 +9,11 @@ import v8 from "node:v8";
 
 import {
   buildUsageFingerprint,
-  buildUsageIndex,
   buildUsageReport,
   classifyImportDirectory,
   summarizeUsage,
-  summarizeUsageIndex,
-  usageIndexMetadata,
 } from "./usage-core.js";
+import { UsageStore } from "./usage-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -201,40 +199,41 @@ async function serveStatic(requestPath, response) {
 }
 
 export function createUsageServer(options = {}) {
-  let cache = null;
+  const usageStore = new UsageStore(options);
+  let storeStatus = null;
+  let syncPromise = null;
 
-  async function metadataForIndex(index) {
+  async function metadataForStore() {
     // The dashboard needs both active scan sources and stored imports that may currently be unsupported.
     return {
-      ...usageIndexMetadata(index),
+      ...usageStore.metadata(),
       imports: await listImportEntries(options),
     };
   }
 
-  async function loadUsageIndex({ force = false, check = true } = {}) {
+  async function loadUsageStore({ force = false, check = true } = {}) {
     const currentUsageOptions = await usageOptions(options);
-    if (!force && !check && cache) {
-      return {
-        fingerprint: cache.fingerprint,
-        checkedAt: new Date().toISOString(),
-        index: cache.index,
-      };
+    if (syncPromise) {
+      return syncPromise;
     }
-
-    const status = await buildUsageFingerprint(currentUsageOptions);
-    if (force || !cache || cache.fingerprint !== status.fingerprint) {
-      cache = {
-        fingerprint: status.fingerprint,
-        index: await buildUsageIndex(currentUsageOptions),
-      };
+    if (!force && !check && storeStatus) {
+      return { ...storeStatus, checkedAt: new Date().toISOString() };
     }
-    return {
-      ...status,
-      index: cache.index,
-    };
+    if (!syncPromise) {
+      syncPromise = usageStore
+        .sync({ force, options: currentUsageOptions })
+        .then((status) => {
+          storeStatus = status;
+          return status;
+        })
+        .finally(() => {
+          syncPromise = null;
+        });
+    }
+    return syncPromise;
   }
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://127.0.0.1");
 
     try {
@@ -268,7 +267,7 @@ export function createUsageServer(options = {}) {
           }
           const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
           await writeImportEntries(options, entries);
-          cache = null;
+          storeStatus = null;
           sendJson(response, 200, {
             import: entry,
             imports: await listImportEntries(options),
@@ -280,7 +279,7 @@ export function createUsageServer(options = {}) {
           const targetPath = path.resolve(url.searchParams.get("path") || "");
           const entries = (await readImportEntries(options)).filter((entry) => entry.path !== targetPath);
           await writeImportEntries(options, entries);
-          cache = null;
+          storeStatus = null;
           sendJson(response, 200, { imports: await listImportEntries(options) });
           return;
         }
@@ -333,23 +332,23 @@ export function createUsageServer(options = {}) {
         }
 
         const check = url.searchParams.get("skipCheck") !== "1";
-        const usage = await loadUsageIndex({ force, check });
+        const usage = await loadUsageStore({ force, check });
         sendJson(response, 200, {
           fingerprint: usage.fingerprint,
           checkedAt: usage.checkedAt,
-          metadata: await metadataForIndex(usage.index),
-          summary: summarizeUsageIndex(usage.index, requestFilters(url)),
+          metadata: await metadataForStore(),
+          summary: usageStore.summarize(requestFilters(url)),
         });
         return;
       }
 
       if (url.pathname === "/api/summary") {
-        const usage = await loadUsageIndex();
+        const usage = await loadUsageStore();
         sendJson(response, 200, {
           fingerprint: usage.fingerprint,
           checkedAt: usage.checkedAt,
-          metadata: await metadataForIndex(usage.index),
-          summary: summarizeUsageIndex(usage.index, requestFilters(url)),
+          metadata: await metadataForStore(),
+          summary: usageStore.summarize(requestFilters(url)),
         });
         return;
       }
@@ -362,6 +361,10 @@ export function createUsageServer(options = {}) {
       });
     }
   });
+  server.on("close", () => {
+    usageStore.close();
+  });
+  return server;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

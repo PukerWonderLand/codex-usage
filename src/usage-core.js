@@ -595,7 +595,7 @@ function createStringInterner() {
   };
 }
 
-async function parseSessionFileForIndex(filePath, home, intern) {
+async function streamSessionUsageFileEvents(filePath, home, onEvent) {
   const meta = {
     id: fallbackSessionId(filePath),
     source: "",
@@ -606,8 +606,6 @@ async function parseSessionFileForIndex(filePath, home, intern) {
   let firstAt = "";
   let lastAt = "";
   let previousCumulative = emptyUsage();
-  let tokenEventCount = 0;
-  const events = [];
 
   for await (const row of readJsonlRows(filePath)) {
     if (row.timestamp) {
@@ -645,34 +643,30 @@ async function parseSessionFileForIndex(filePath, home, intern) {
       continue;
     }
 
-    tokenEventCount += 1;
     const channel = classifyChannel({
       originator: meta.originator,
       source: meta.source,
       homeLabel: home.homeLabel || home.label,
     });
     const timestamp = row.timestamp || lastAt || firstAt;
-    events.push({
-      t: Date.parse(timestamp),
-      s: intern(meta.id),
-      h: intern(home.homeId || home.id),
-      l: intern(home.homeLabel || home.label),
-      c: intern(channel),
-      p: intern(meta.cwd),
-      m: intern(model),
-      total: increment.total,
-      input: increment.input,
-      cached: increment.cached,
-      output: increment.output,
-      reasoning: increment.reasoning,
+    const timestampMs = Date.parse(timestamp);
+    if (!Number.isFinite(timestampMs)) {
+      continue;
+    }
+    await onEvent({
+      timestampMs,
+      sessionId: meta.id,
+      homeId: home.homeId || home.id,
+      homeLabel: home.homeLabel || home.label,
+      channel,
+      project: meta.cwd,
+      model,
+      usage: increment,
     });
   }
-
-  return events;
 }
 
-async function parseProjectUsageLogFileForIndex(filePath, source, intern) {
-  const events = [];
+async function streamProjectUsageFileEvents(filePath, source, onEvent) {
   let rowNumber = 0;
 
   for await (const row of readJsonlRows(filePath)) {
@@ -690,22 +684,66 @@ async function parseProjectUsageLogFileForIndex(filePath, source, intern) {
       continue;
     }
 
-    events.push({
-      t: time,
-      s: intern(projectLogSessionId(row, source, rowNumber)),
-      h: intern(source.id),
-      l: intern(source.label),
-      c: intern(projectLogChannel(row)),
-      p: intern(row.cwd || row.project_root || row.projectRoot || source.path),
-      m: intern(row.model || "Unknown model"),
-      total: usage.total,
-      input: usage.input,
-      cached: usage.cached,
-      output: usage.output,
-      reasoning: usage.reasoning,
+    await onEvent({
+      timestampMs: time,
+      sessionId: projectLogSessionId(row, source, rowNumber),
+      homeId: source.id,
+      homeLabel: source.label,
+      channel: projectLogChannel(row),
+      project: row.cwd || row.project_root || row.projectRoot || source.path,
+      model: row.model || "Unknown model",
+      usage,
     });
   }
+}
 
+export async function streamUsageFileEvents(filePath, source, onEvent) {
+  if (source.kind === "project-log") {
+    await streamProjectUsageFileEvents(filePath, source, onEvent);
+    return;
+  }
+  await streamSessionUsageFileEvents(filePath, source, onEvent);
+}
+
+async function parseSessionFileForIndex(filePath, home, intern) {
+  const events = [];
+  await streamSessionUsageFileEvents(filePath, home, (event) => {
+    events.push({
+      t: event.timestampMs,
+      s: intern(event.sessionId),
+      h: intern(event.homeId),
+      l: intern(event.homeLabel),
+      c: intern(event.channel),
+      p: intern(event.project),
+      m: intern(event.model),
+      total: event.usage.total,
+      input: event.usage.input,
+      cached: event.usage.cached,
+      output: event.usage.output,
+      reasoning: event.usage.reasoning,
+    });
+  });
+  return events;
+}
+
+async function parseProjectUsageLogFileForIndex(filePath, source, intern) {
+  const events = [];
+  await streamProjectUsageFileEvents(filePath, source, (event) => {
+    events.push({
+      t: event.timestampMs,
+      s: intern(event.sessionId),
+      h: intern(event.homeId),
+      l: intern(event.homeLabel),
+      c: intern(event.channel),
+      p: intern(event.project),
+      m: intern(event.model),
+      total: event.usage.total,
+      input: event.usage.input,
+      cached: event.usage.cached,
+      output: event.usage.output,
+      reasoning: event.usage.reasoning,
+    });
+  });
   return events;
 }
 
@@ -1142,7 +1180,7 @@ function emptyTimelineRow(key) {
   };
 }
 
-function completeHourlyTimeline(rows, range, bucket) {
+export function completeHourlyTimeline(rows, range, bucket) {
   // 最近范围按选定边界补齐小时；普通单日范围保留完整自然日补齐。
   if (bucket !== "hour" || (!isSingleLocalDayRange(range) && range?.preset !== "recent")) {
     return rows;
@@ -1203,7 +1241,7 @@ function homeStatsFromIndex(index) {
   );
 }
 
-function previousPeriodRange(range) {
+export function previousUsageRange(range) {
   if (!range.start || !range.end || range.preset === "all") {
     return null;
   }
@@ -1282,7 +1320,35 @@ function comparisonLabel(preset) {
 
 function usageComparison({ range, allEvents, eventTime, eventSession, addEventUsage, currentTotals, now }) {
   // 保持调用方事件结构不变，只在这里统一计算上一周期和趋势。
-  const previousRange = previousPeriodRange(range);
+  const previousRange = previousUsageRange(range);
+  if (!previousRange) {
+    return usageComparisonFromAggregates({ range, currentTotals, now });
+  }
+  const previousEvents = allEvents.filter((event) => {
+    const time = eventTime(event);
+    return Number.isFinite(time) && time >= previousRange.start.getTime() && time <= previousRange.end.getTime();
+  });
+  const previousTotals = previousEvents.reduce((sum, event) => addEventUsage(sum, event), emptyUsage());
+  const previousSessions = new Set(previousEvents.map(eventSession));
+  return usageComparisonFromAggregates({
+    range,
+    currentTotals,
+    previousTotals,
+    previousEventCount: previousEvents.length,
+    previousSessionCount: previousSessions.size,
+    now,
+  });
+}
+
+export function usageComparisonFromAggregates({
+  range,
+  currentTotals,
+  previousTotals = emptyUsage(),
+  previousEventCount = 0,
+  previousSessionCount = 0,
+  now,
+}) {
+  const previousRange = previousUsageRange(range);
   if (!previousRange) {
     return {
       label: comparisonLabel(range.preset),
@@ -1297,13 +1363,6 @@ function usageComparison({ range, allEvents, eventTime, eventSession, addEventUs
       averagePercentChange: null,
     };
   }
-
-  const previousEvents = allEvents.filter((event) => {
-    const time = eventTime(event);
-    return Number.isFinite(time) && time >= previousRange.start.getTime() && time <= previousRange.end.getTime();
-  });
-  const previousTotals = previousEvents.reduce((sum, event) => addEventUsage(sum, event), emptyUsage());
-  const previousSessions = new Set(previousEvents.map(eventSession));
   const average = averageTrend(currentTotals, previousTotals, range, previousRange, now);
 
   return {
@@ -1313,8 +1372,8 @@ function usageComparison({ range, allEvents, eventTime, eventSession, addEventUs
       end: previousRange.end.toISOString(),
     },
     previousTotals,
-    previousEventCount: previousEvents.length,
-    previousSessionCount: previousSessions.size,
+    previousEventCount,
+    previousSessionCount,
     totalDelta: currentTotals.total - previousTotals.total,
     percentChange: percentChange(currentTotals.total, previousTotals.total),
     ...average,

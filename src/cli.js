@@ -7,13 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createUsageServer } from "./server.js";
-import {
-  buildUsageIndex,
-  buildUsageReport,
-  summarizeUsage,
-  summarizeUsageIndex,
-  usageIndexMetadata,
-} from "./usage-core.js";
+import { buildUsageReport, summarizeUsage } from "./usage-core.js";
+import { UsageStore } from "./usage-store.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3765;
@@ -272,14 +267,19 @@ async function printSummary(command, args) {
     return;
   }
 
-  // Summary commands use the compact index path so routine CLI checks stay low-memory.
-  const index = await buildUsageIndex(reportOptions(args));
-  const summary = summarizeUsageIndex(index, { preset: "all", bucket: "month" });
-  if (hasFlag(args, "--json")) {
-    console.log(JSON.stringify({ metadata: usageIndexMetadata(index), summary }, null, 2));
-    return;
+  // 摘要命令复用磁盘索引，避免历史事件常驻内存。
+  const store = new UsageStore(reportOptions(args));
+  try {
+    await store.sync();
+    const summary = store.summarize({ preset: "all", bucket: "month" });
+    if (hasFlag(args, "--json")) {
+      console.log(JSON.stringify({ metadata: store.metadata(), summary }, null, 2));
+      return;
+    }
+    printHuman(summary);
+  } finally {
+    store.close();
   }
-  printHuman(summary);
 }
 
 function runServer(args) {
