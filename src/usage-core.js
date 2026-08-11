@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
+import { calculateRequestCost, sumCosts } from "./pricing.js";
+
 const SESSION_DIRS = ["sessions", "archived_sessions"];
 const PROJECT_USAGE_DIR = ".codex-usage";
 const PROJECT_USAGE_FILE = "usage.jsonl";
@@ -15,12 +17,13 @@ const USAGE_FIELDS = [
   "total",
   "input",
   "cached",
+  "cacheWrite",
   "output",
   "reasoning",
 ];
 
 export function emptyUsage() {
-  return { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
+  return { total: 0, input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0 };
 }
 
 function usageFromRaw(raw = {}) {
@@ -28,6 +31,7 @@ function usageFromRaw(raw = {}) {
     total: Number(raw.total_tokens || 0),
     input: Number(raw.input_tokens || 0),
     cached: Number(raw.cached_input_tokens || 0),
+    cacheWrite: Number(raw.cache_write_input_tokens || 0),
     output: Number(raw.output_tokens || 0),
     reasoning: Number(raw.reasoning_output_tokens || 0),
   };
@@ -328,7 +332,26 @@ function readTokenUsage(payload) {
   const info = payload?.info || {};
   const cumulative = info.total_token_usage ? usageFromRaw(info.total_token_usage) : null;
   const last = info.last_token_usage ? usageFromRaw(info.last_token_usage) : null;
-  return { cumulative, last };
+  return { cumulative, last, contextWindow: Number(info.model_context_window || 0) };
+}
+
+const CONTEXT_BASELINE_TOKENS = 12_000;
+
+export function contextWindowSnapshot(lastUsage, contextWindow) {
+  const window = Math.max(0, Number(contextWindow || 0));
+  const used = Math.max(0, Number(lastUsage?.total || 0));
+  const remaining = Math.max(0, window - used);
+  const effectiveWindow = Math.max(0, window - CONTEXT_BASELINE_TOKENS);
+  const effectiveUsed = Math.max(0, used - CONTEXT_BASELINE_TOKENS);
+  const effectiveRemaining = Math.max(0, effectiveWindow - effectiveUsed);
+  return {
+    window,
+    used,
+    remaining,
+    percentRemaining:
+      effectiveWindow > 0 ? Math.round(Math.max(0, Math.min(1, effectiveRemaining / effectiveWindow)) * 100) : 0,
+    baselineTokens: CONTEXT_BASELINE_TOKENS,
+  };
 }
 
 export async function parseSessionFile(filePath, home) {
@@ -444,6 +467,118 @@ export async function parseSessionFile(filePath, home) {
   };
 }
 
+export async function parseSessionTurns(filePath, home = {}) {
+  const meta = {
+    id: fallbackSessionId(filePath),
+    source: "",
+    originator: "",
+    cwd: "",
+  };
+  let model = "";
+  let activeTurn = null;
+  let previousCumulative = emptyUsage();
+  let previousContextUsed = null;
+  const turns = [];
+
+  const finishTurn = (row, status = "completed") => {
+    if (!activeTurn) {
+      return;
+    }
+    activeTurn.status = status;
+    activeTurn.completedAt = row?.timestamp || activeTurn.lastEventAt || activeTurn.startedAt;
+    activeTurn.durationMs = Number(row?.payload?.duration_ms || 0);
+    activeTurn.cost = sumCosts(activeTurn.requests.map((request) => request.cost));
+    activeTurn.cacheMissInput = activeTurn.requests.reduce(
+      (sum, request) => sum + request.cacheMissInput,
+      0,
+    );
+    activeTurn.cacheHitRate =
+      activeTurn.usage.input > 0 ? activeTurn.usage.cached / activeTurn.usage.input : 0;
+    turns.push(activeTurn);
+    activeTurn = null;
+  };
+
+  for await (const row of readJsonlRows(filePath)) {
+    if (row.type === "session_meta") {
+      meta.id = row.payload?.id || meta.id;
+      meta.source = row.payload?.source || meta.source;
+      meta.originator = row.payload?.originator || meta.originator;
+      meta.cwd = row.payload?.cwd || meta.cwd;
+      continue;
+    }
+    if (row.type === "turn_context") {
+      model = row.payload?.model || model;
+      continue;
+    }
+    if (row.type === "event_msg" && row.payload?.type === "task_started") {
+      finishTurn(row, "interrupted");
+      activeTurn = {
+        sessionId: meta.id,
+        turnId: row.payload.turn_id || `${meta.id}:${turns.length + 1}`,
+        startedAt: row.timestamp || "",
+        completedAt: "",
+        lastEventAt: row.timestamp || "",
+        status: "running",
+        model,
+        project: meta.cwd,
+        channel: classifyChannel({
+          originator: meta.originator,
+          source: meta.source,
+          homeLabel: home.homeLabel || home.label,
+        }),
+        usage: emptyUsage(),
+        requests: [],
+        context: null,
+        compactionCount: 0,
+      };
+      continue;
+    }
+    if (row.type === "event_msg" && row.payload?.type === "token_count") {
+      const { cumulative, last, contextWindow } = readTokenUsage(row.payload);
+      let increment = emptyUsage();
+      if (cumulative) {
+        increment = diffUsage(cumulative, previousCumulative);
+        previousCumulative = cumulative;
+      } else if (last) {
+        increment = last;
+      }
+      if (!activeTurn || isZeroUsage(increment)) {
+        continue;
+      }
+      activeTurn.model ||= model;
+      addUsage(activeTurn.usage, increment);
+      const context = contextWindowSnapshot(last, contextWindow);
+      const compacted = previousContextUsed !== null && context.used < previousContextUsed;
+      if (compacted) {
+        activeTurn.compactionCount += 1;
+      }
+      previousContextUsed = context.used;
+      const cost = calculateRequestCost(increment, activeTurn.model || model);
+      activeTurn.requests.push({
+        timestamp: row.timestamp || activeTurn.startedAt,
+        usage: increment,
+        context,
+        cacheMissInput: Math.max(0, increment.input - increment.cached - increment.cacheWrite),
+        cacheHitRate: increment.input > 0 ? increment.cached / increment.input : 0,
+        compacted,
+        cost,
+      });
+      activeTurn.context = context;
+      activeTurn.lastEventAt = row.timestamp || activeTurn.lastEventAt;
+      continue;
+    }
+    if (row.type === "event_msg" && row.payload?.type === "task_complete") {
+      finishTurn(row, "completed");
+      continue;
+    }
+    if (row.type === "event_msg" && row.payload?.type === "turn_aborted") {
+      finishTurn(row, "aborted");
+    }
+  }
+  finishTurn(null, "running");
+  return turns;
+}
+
 async function* readJsonlRows(filePath) {
   const lines = createInterface({
     input: createReadStream(filePath, { encoding: "utf8" }),
@@ -466,10 +601,11 @@ function usageFromProjectLog(raw = {}) {
   const usage = raw || {};
   const input = Number(usage.input ?? usage.input_tokens ?? 0);
   const cached = Number(usage.cached ?? usage.cached_input_tokens ?? 0);
+  const cacheWrite = Number(usage.cacheWrite ?? usage.cache_write ?? usage.cache_write_input_tokens ?? 0);
   const output = Number(usage.output ?? usage.output_tokens ?? 0);
   const reasoning = Number(usage.reasoning ?? usage.reasoning_output_tokens ?? 0);
   const total = Number(usage.total ?? usage.total_tokens ?? input + output);
-  return { total, input, cached, output, reasoning };
+  return { total, input, cached, cacheWrite, output, reasoning };
 }
 
 function projectLogTimestamp(row) {
@@ -719,6 +855,7 @@ async function parseSessionFileForIndex(filePath, home, intern) {
       total: event.usage.total,
       input: event.usage.input,
       cached: event.usage.cached,
+      cacheWrite: event.usage.cacheWrite,
       output: event.usage.output,
       reasoning: event.usage.reasoning,
     });
@@ -740,6 +877,7 @@ async function parseProjectUsageLogFileForIndex(filePath, source, intern) {
       total: event.usage.total,
       input: event.usage.input,
       cached: event.usage.cached,
+      cacheWrite: event.usage.cacheWrite,
       output: event.usage.output,
       reasoning: event.usage.reasoning,
     });
@@ -1441,9 +1579,12 @@ export function summarizeUsageIndex(index, filters = {}) {
 
 export function summarizeUsage(report, filters = {}) {
   const bucket = filters.bucket || "day";
-  const range = resolveDateRange(filters, report.events);
+  const scopedEvents = filters.sessionId
+    ? report.events.filter((event) => event.sessionId === filters.sessionId)
+    : report.events;
+  const range = resolveDateRange(filters, scopedEvents);
   const now = filters.now ? new Date(filters.now) : new Date();
-  const events = report.events.filter((event) => {
+  const events = scopedEvents.filter((event) => {
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -1461,7 +1602,7 @@ export function summarizeUsage(report, filters = {}) {
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
   const comparison = usageComparison({
     range,
-    allEvents: report.events,
+    allEvents: scopedEvents,
     eventTime: (event) => Date.parse(event.timestamp),
     eventSession: (event) => event.sessionId,
     addEventUsage: (sum, event) => addUsage(sum, event.total),

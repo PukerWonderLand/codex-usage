@@ -14,7 +14,7 @@ async function makeFixtureHome() {
   const sessionDir = path.join(fakeHome, ".codex", "sessions", "2026", "05", "01");
   await mkdir(sessionDir, { recursive: true });
   await writeFile(
-    path.join(sessionDir, "rollout.jsonl"),
+    path.join(sessionDir, "rollout-cli-run-1.jsonl"),
     jsonl([
       {
         timestamp: "2026-05-01T02:00:00.000Z",
@@ -22,12 +22,30 @@ async function makeFixtureHome() {
         payload: { id: "cli-run-1", source: "cli", originator: "codex-tui", cwd: "/work/cli" },
       },
       {
+        timestamp: "2026-05-01T02:00:01.000Z",
+        type: "turn_context",
+        payload: { model: "gpt-5.6-sol" },
+      },
+      {
+        timestamp: "2026-05-01T02:00:02.000Z",
+        type: "event_msg",
+        payload: { type: "task_started", turn_id: "turn-cli-1" },
+      },
+      {
         timestamp: "2026-05-01T02:01:00.000Z",
         type: "event_msg",
         payload: {
           type: "token_count",
           info: {
+            model_context_window: 258400,
             total_token_usage: {
+              total_tokens: 77,
+              input_tokens: 60,
+              cached_input_tokens: 10,
+              output_tokens: 17,
+              reasoning_output_tokens: 3,
+            },
+            last_token_usage: {
               total_tokens: 77,
               input_tokens: 60,
               cached_input_tokens: 10,
@@ -36,6 +54,16 @@ async function makeFixtureHome() {
             },
           },
         },
+      },
+      {
+        timestamp: "2026-05-01T02:02:00.000Z",
+        type: "event_msg",
+        payload: { type: "task_complete", turn_id: "turn-cli-1" },
+      },
+      {
+        timestamp: "2026-05-01T02:03:00.000Z",
+        type: "event_msg",
+        payload: { type: "task_started", turn_id: "turn-cli-active" },
       },
     ]),
   );
@@ -96,17 +124,18 @@ function runCli(args, env = process.env) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
+    let errorOutput = "";
     child.stdout.on("data", (chunk) => {
       output += chunk.toString();
     });
     child.stderr.on("data", (chunk) => {
-      output += chunk.toString();
+      errorOutput += chunk.toString();
     });
     child.on("exit", (code) => {
       if (code === 0) {
         resolve(output);
       } else {
-        reject(new Error(`cli exited with ${code}: ${output}`));
+        reject(new Error(`cli exited with ${code}: ${output}${errorOutput}`));
       }
     });
   });
@@ -158,6 +187,76 @@ test("cli summary --json returns lightweight summary metadata without full repor
   assert.equal(parsed.metadata.eventCount, 1);
   assert.equal(parsed.report, undefined);
   assert.ok((await stat(path.join(homeDir, ".codex-usage", "usage-index.sqlite"))).size > 0);
+});
+
+test("cli turn defaults to the latest completed turn when a new turn is active", async () => {
+  const homeDir = await makeFixtureHome();
+  const output = await runCli(["turn", "--home-dir", homeDir], isolatedEnv(homeDir));
+
+  assert.match(output, /Turn: turn-cli-1/);
+  assert.match(output, /Uncached input: 50/);
+  assert.match(output, /API-equivalent cost: \$0\.000765/);
+  assert.match(output, /Context remaining: 258,323 \/ 258,400/);
+});
+
+test("cli turn --active explicitly prints the current active turn", async () => {
+  const homeDir = await makeFixtureHome();
+  const output = await runCli(["turn", "--active", "--home-dir", homeDir], isolatedEnv(homeDir));
+
+  assert.match(output, /Turn: turn-cli-active/);
+  assert.match(output, /Total tokens: 0/);
+});
+
+test("cli hook stores the latest turn snapshot for a Codex notify callback", async () => {
+  const homeDir = await makeFixtureHome();
+  const payload = JSON.stringify({
+    type: "agent-turn-complete",
+    "thread-id": "cli-run-1",
+    "turn-id": "turn-cli-1",
+  });
+  await runCli(["hook", payload, "--home-dir", homeDir], isolatedEnv(homeDir));
+
+  const snapshot = JSON.parse(
+    await readFile(path.join(homeDir, ".codex-usage", "latest-turn.json"), "utf8"),
+  );
+  assert.equal(snapshot.turn.turnId, "turn-cli-1");
+  assert.equal(snapshot.turn.cacheMissInput, 50);
+});
+
+test("cli setup-reporting installs an idempotent managed AGENTS.md block", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-reporting-"));
+  const agentsPath = path.join(homeDir, "AGENTS.md");
+  await writeFile(agentsPath, "# Existing instructions\n\nKeep this text.\n");
+
+  const first = await runCli(["setup-reporting", "--home-dir", homeDir], isolatedEnv(homeDir));
+  const firstBody = await readFile(agentsPath, "utf8");
+  const second = await runCli(["setup-reporting", "--home-dir", homeDir], isolatedEnv(homeDir));
+  const secondBody = await readFile(agentsPath, "utf8");
+  const check = await runCli(["setup-reporting", "--check", "--home-dir", homeDir], isolatedEnv(homeDir));
+
+  assert.match(first, /prompt installed/);
+  assert.match(second, /already configured/);
+  assert.match(check, /is configured/);
+  assert.match(firstBody, /Keep this text\./);
+  assert.match(firstBody, /codex-usage:reporting:start/);
+  assert.match(firstBody, /codex-usage turn --active --json/);
+  assert.equal(secondBody, firstBody);
+  assert.equal((firstBody.match(/codex-usage:reporting:start/g) || []).length, 1);
+});
+
+test("cli setup-reporting migrates the legacy unmarked reporting prompt", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-reporting-legacy-"));
+  const agentsPath = path.join(homeDir, "AGENTS.md");
+  await writeFile(
+    agentsPath,
+    "# Codex Usage Reporting\n\nRun `codex-usage turn --json`, then `codex-usage turn --active --json`.\n",
+  );
+
+  await runCli(["setup-reporting", "--home-dir", homeDir], isolatedEnv(homeDir));
+  const body = await readFile(agentsPath, "utf8");
+
+  assert.equal((body.match(/^# Codex Usage Reporting$/gm) || []).length, 1);
+  assert.equal((body.match(/codex-usage:reporting:start/g) || []).length, 1);
 });
 
 test("cli gateway starts a background usage server and returns", async () => {

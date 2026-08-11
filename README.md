@@ -1,5 +1,9 @@
 # Codex Usage
 
+[简体中文](README.md) | [English](README.en.md)
+
+[在线静态演示](https://pukerwonderland.github.io/codex-usage/)
+
 中文 | [English](README.en.md)
 
 Codex Usage 是一个本地优先的 Codex token 用量分析工具。它会读取本机官方 Codex session 日志，把 CLI、Codex Desktop、Codex Exec、JetBrains/PyCharm 插件等来源的 token 消耗聚合起来，并提供命令行摘要、本地网页仪表盘、后台服务、静态 HTML 导出和 JSON API。
@@ -10,6 +14,7 @@ Codex Usage 是一个本地优先的 Codex token 用量分析工具。它会读�
 
 - 本地扫描官方 Codex session 日志，数据不需要上传到外部服务
 - 支持总 token、输入、缓存输入、输出、推理输出和会话数统计
+- 支持按 session 和 Codex 原生 turn 查看 token、缓存命中、API 等价费用及上下文余量
 - 支持今日、本周、本月、全部和自定义时间范围
 - 支持按小时、按天、按周、按月查看时间趋势
 - 支持渠道分布、项目目录 Top 25、模型分布和扫描目录列表
@@ -132,6 +137,43 @@ node src/cli.js json
 node src/cli.js summary --json
 ```
 
+查看最近一轮，或绑定指定会话：
+
+```bash
+codex-usage turn
+codex-usage turn --session 019fefcd-2519-78c3-acb6-6ada3b090da7
+codex-usage turn --json
+```
+
+让每个新的 Codex 会话自动在回答末尾报告用量：
+
+```bash
+codex-usage setup-reporting
+codex-usage setup-reporting --check
+```
+
+该命令会在 `~/.codex/AGENTS.md` 中创建或更新带标记的受控提示块，重复执行不会产生副本，也不会覆盖文件中的其他用户指令。当前回合最终正文生成前只能读取“截至生成前”的数据；回合完成后的精确完整值仍由 Hook 快照和下一回合的首次查询补齐。
+
+导出指定会话的单文件静态展示页：
+
+```bash
+node src/static-export.js --out docs/index.html --session <session-id>
+```
+
+指定会话导出会仅保留该会话的用量事件，并移除服务端专用的本机日志路径，适合部署到 GitHub Pages。
+
+将 Codex 回合完成事件接入本工具，可在 `~/.codex/config.toml` 配置：
+
+```toml
+notify = ["codex-usage", "hook"]
+```
+
+每轮完成后会更新 `~/.codex-usage/latest-turn.json`。Codex 当前会丢弃 notify 子进程的标准输出，因此 CLI 主界面无法由外部工具可靠插入文本；可用 `codex-usage turn` 即时查看，或在另一个终端持续读取快照。这里不修改 Codex 二进制，也不依赖非稳定内部接口。
+
+费用是按日志中的每次请求计算的 **API 等价估算**，不是 ChatGPT/Codex 订阅账单。GPT-5.6 Sol 当前采用普通输入 `$5/M`、缓存输入 `$0.50/M`、输出 `$30/M`；单次请求输入超过 `272K` 时应用官方长上下文倍率。价格规则带版本日期，官方价格变化后应同步更新 `src/pricing.js`。
+
+上下文余量复现 Codex `/status` 的计算口径：从模型上下文窗口中预留 `12K` 基线后计算可用百分比。页面还会标记每次请求的非缓存输入、缓存命中率，以及上下文使用量下降时检测到的压缩事件。
+
 ## 网页仪表盘
 
 网页支持：
@@ -139,6 +181,7 @@ node src/cli.js summary --json
 - 今日、本周、本月、全部、自定义时间范围
 - 按小时、按天、按周、按月聚合
 - 总 token、输入、缓存输入、输出、推理输出、会话数
+- session 选择器、每轮 token/费用/缓存明细、上下文余量和压缩次数
 - 渠道分布
 - 时间分布图
 - 项目目录 Top 25
@@ -195,6 +238,10 @@ GET /api/status?since=<fingerprint>
 GET /api/usage
 GET /api/usage?force=1
 GET /api/usage?detail=full
+GET /api/pricing
+GET /api/sessions
+GET /api/sessions/<sessionId>/turns
+GET /api/sessions/<sessionId>/turns/latest
 GET /api/summary
 GET /api/imports
 POST /api/imports
@@ -208,6 +255,8 @@ DELETE /api/imports?path=<absolute-path>
 - `/api/usage?force=1` 强制重扫
 - `/api/usage?detail=full` 返回完整 `report`，用于调试明细
 - `/api/summary` 只返回 summary 包装结果
+- `/api/sessions` 返回可选会话，turns 路由返回该会话的原生回合明细
+- `/api/pricing` 返回当前内置价格版本，便于前端和外部客户端审计
 - `/api/imports` 用于查看、添加或删除网页导入的目录
 
 默认低内存 `gateway` 可能会拒绝 `detail=full`，以避免完整明细 report 占用过高。需要调试完整明细时，可以临时提高内存：

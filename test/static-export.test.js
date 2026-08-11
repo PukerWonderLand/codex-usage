@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderStaticDashboardHtml } from "../src/static-export.js";
+import { exportStaticDashboard, renderStaticDashboardHtml } from "../src/static-export.js";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 test("renderStaticDashboardHtml embeds usage data and app assets", () => {
   const html = renderStaticDashboardHtml({
@@ -38,4 +41,40 @@ test("renderStaticDashboardHtml embeds usage data and app assets", () => {
   assert.match(html, /id="projectSearch"/);
   assert.match(html, /id="modelSearch"/);
   assert.match(html, /id="timelineDetails"/);
+});
+
+test("renderStaticDashboardHtml embeds a default session and its turn details", () => {
+  const html = renderStaticDashboardHtml({ sessions: [], events: [], warnings: [] }, {
+    sessionId: "session-static-1",
+    turnData: { sessionId: "session-static-1", turns: [{ turnId: "turn-static-1" }], summary: {} },
+  });
+
+  assert.match(html, /__CODEX_USAGE_DEFAULT_SESSION_ID__ = "session-static-1"/);
+  assert.match(html, /__CODEX_USAGE_TURN_DATA__/);
+  assert.match(html, /turn-static-1/);
+});
+
+test("exportStaticDashboard scopes a public snapshot and removes local session paths", async () => {
+  const outputDir = await mkdtemp(path.join(tmpdir(), "codex-static-"));
+  const outFile = path.join(outputDir, "index.html");
+  await exportStaticDashboard({
+    outFile,
+    sessionId: "selected",
+    turnData: { sessionId: "selected", turns: [], summary: {} },
+    report: {
+      homes: [{ id: "home", label: "Main", path: "/private/home" }],
+      sessions: [
+        { id: "selected", filePath: "/private/selected.jsonl", homePath: "/private/home" },
+        { id: "other", filePath: "/private/other.jsonl", homePath: "/private/home" },
+      ],
+      events: [{ sessionId: "selected" }, { sessionId: "other" }],
+      warnings: [],
+    },
+  });
+  const html = await readFile(outFile, "utf8");
+
+  assert.match(html, /selected/);
+  assert.doesNotMatch(html, /private\/selected/);
+  assert.doesNotMatch(html, /private\/other/);
+  assert.doesNotMatch(html, /sessionId":"other/);
 });

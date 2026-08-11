@@ -34,12 +34,30 @@ async function makeFixtureHome() {
         payload: { id: "server-1", source: "cli", originator: "codex-tui", cwd: "/work/cli" },
       },
       {
+        timestamp: "2026-05-01T02:00:01.000Z",
+        type: "turn_context",
+        payload: { model: "gpt-5.6-sol" },
+      },
+      {
+        timestamp: "2026-05-01T02:00:02.000Z",
+        type: "event_msg",
+        payload: { type: "task_started", turn_id: "server-turn-1" },
+      },
+      {
         timestamp: "2026-05-01T02:01:00.000Z",
         type: "event_msg",
         payload: {
           type: "token_count",
           info: {
+            model_context_window: 258400,
             total_token_usage: {
+              total_tokens: 123,
+              input_tokens: 100,
+              cached_input_tokens: 20,
+              output_tokens: 23,
+              reasoning_output_tokens: 5,
+            },
+            last_token_usage: {
               total_tokens: 123,
               input_tokens: 100,
               cached_input_tokens: 20,
@@ -48,6 +66,11 @@ async function makeFixtureHome() {
             },
           },
         },
+      },
+      {
+        timestamp: "2026-05-01T02:02:00.000Z",
+        type: "event_msg",
+        payload: { type: "task_complete", turn_id: "server-turn-1" },
       },
     ]),
   );
@@ -70,15 +93,26 @@ test("server serves the dashboard and usage API", async () => {
     const baseUrl = `http://127.0.0.1:${port}`;
     const page = await fetch(`${baseUrl}/`);
     const api = await fetch(`${baseUrl}/api/usage`);
+    const sessions = await fetch(`${baseUrl}/api/sessions`);
+    const turns = await fetch(`${baseUrl}/api/sessions/server-1/turns`).then((response) => response.json());
+    const pricing = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     const recent = await fetch(`${baseUrl}/api/usage?preset=recent&recentValue=${encodeURIComponent("14天")}`);
     const hourly = await fetch(`${baseUrl}/api/usage?bucket=hour`);
     const json = await api.json();
+    const sessionsJson = await sessions.json();
     const recentJson = await recent.json();
     const hourlyJson = await hourly.json();
 
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Codex Usage/);
     assert.equal(api.status, 200);
+    assert.equal(sessions.status, 200);
+    assert.equal(sessionsJson.sessions[0].id, "server-1");
+    assert.equal(sessionsJson.sessions[0].total.total, 123);
+    assert.equal(turns.turns[0].turnId, "server-turn-1");
+    assert.equal(turns.turns[0].cacheMissInput, 80);
+    assert.equal(turns.summary.latestContext.remaining, 258277);
+    assert.equal(pricing.models["gpt-5.6-sol"].perMillion.output, 30);
     assert.equal(json.summary.totals.total, 123);
     assert.equal(recent.status, 200);
     assert.equal(recentJson.summary.range.preset, "recent");
@@ -101,6 +135,12 @@ test("server serves the dashboard and usage API", async () => {
 
     const detailed = await fetch(`${baseUrl}/api/usage?detail=full`).then((response) => response.json());
     assert.equal(detailed.report.events[0].channel, "CLI");
+    const selected = await fetch(`${baseUrl}/api/usage?detail=full&sessionId=server-1`).then((response) => response.json());
+    assert.equal(selected.summary.sessionCount, 1);
+    assert.equal(selected.summary.totals.total, 123);
+    const missing = await fetch(`${baseUrl}/api/usage?detail=full&sessionId=missing`).then((response) => response.json());
+    assert.equal(missing.summary.sessionCount, 0);
+    assert.equal(missing.summary.totals.total, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

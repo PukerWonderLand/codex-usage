@@ -11,9 +11,11 @@ import {
   buildUsageFingerprint,
   buildUsageReport,
   classifyImportDirectory,
+  parseSessionTurns,
   summarizeUsage,
 } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
+import { MODEL_PRICING, PRICING_VERSION, sumCosts } from "./pricing.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -47,6 +49,7 @@ function sendText(response, statusCode, body) {
 
 function requestFilters(url) {
   return {
+    sessionId: url.searchParams.get("sessionId") || "",
     preset: url.searchParams.get("preset") || "all",
     bucket: url.searchParams.get("bucket") || "day",
     startDate: url.searchParams.get("startDate") || "",
@@ -248,6 +251,48 @@ export function createUsageServer(options = {}) {
         return;
       }
 
+      if (url.pathname === "/api/pricing") {
+        sendJson(response, 200, {
+          version: PRICING_VERSION,
+          kind: "api-equivalent",
+          models: MODEL_PRICING,
+        });
+        return;
+      }
+
+      const turnsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/turns(?:\/(latest))?$/);
+      if (turnsMatch) {
+        const sessionId = decodeURIComponent(turnsMatch[1]);
+        const currentUsageOptions = await usageOptions(options);
+        const report = await buildUsageReport(currentUsageOptions);
+        const session = report.sessions.find((candidate) => candidate.id === sessionId);
+        if (!session) {
+          sendJson(response, 404, { error: "Session not found", sessionId });
+          return;
+        }
+        const turns = await parseSessionTurns(session.filePath, {
+          homeId: session.homeId,
+          homeLabel: session.homeLabel,
+          homePath: session.homePath,
+        });
+        if (turnsMatch[2] === "latest") {
+          sendJson(response, 200, { sessionId, turn: turns.at(-1) || null });
+          return;
+        }
+        sendJson(response, 200, {
+          sessionId,
+          turns,
+          summary: {
+            turnCount: turns.length,
+            completedTurnCount: turns.filter((turn) => turn.status === "completed").length,
+            cost: sumCosts(turns.flatMap((turn) => turn.requests.map((request) => request.cost))),
+            latestContext: turns.at(-1)?.context || null,
+            compactionCount: turns.reduce((sum, turn) => sum + turn.compactionCount, 0),
+          },
+        });
+        return;
+      }
+
       if (url.pathname === "/api/imports") {
         if (request.method === "GET") {
           sendJson(response, 200, { imports: await listImportEntries(options) });
@@ -339,6 +384,12 @@ export function createUsageServer(options = {}) {
           metadata: await metadataForStore(),
           summary: usageStore.summarize(requestFilters(url)),
         });
+        return;
+      }
+
+      if (url.pathname === "/api/sessions") {
+        await loadUsageStore();
+        sendJson(response, 200, { sessions: usageStore.listSessions() });
         return;
       }
 

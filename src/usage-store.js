@@ -15,7 +15,7 @@ import {
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 
-const STORE_SCHEMA_VERSION = 1;
+const STORE_SCHEMA_VERSION = 2;
 
 function localDateKey(date) {
   const year = date.getFullYear();
@@ -42,6 +42,7 @@ function usageFromRow(row) {
     total: Number(values.total || 0),
     input: Number(values.input || 0),
     cached: Number(values.cached || 0),
+    cacheWrite: Number(values.cache_write ?? values.cacheWrite ?? 0),
     output: Number(values.output || 0),
     reasoning: Number(values.reasoning || 0),
   };
@@ -107,6 +108,7 @@ export class UsageStore {
         total INTEGER NOT NULL,
         input INTEGER NOT NULL,
         cached INTEGER NOT NULL,
+        cache_write INTEGER NOT NULL DEFAULT 0,
         output INTEGER NOT NULL,
         reasoning INTEGER NOT NULL
       ) STRICT;
@@ -117,7 +119,9 @@ export class UsageStore {
       CREATE INDEX IF NOT EXISTS events_model_idx ON events(model);
     `);
     const version = Number(this.database.prepare("PRAGMA user_version").get().user_version || 0);
-    if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
+    if (version === 1) {
+      this.database.exec("ALTER TABLE events ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0");
+    } else if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       throw new Error(`不支持的用量索引版本：${version}`);
     }
     this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
@@ -171,8 +175,8 @@ export class UsageStore {
     const insertEvent = database.prepare(`
       INSERT INTO events (
         source_path, timestamp_ms, session_id, home_id, home_label, channel, project, model,
-        hour_key, day_key, week_key, month_key, total, input, cached, output, reasoning
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        hour_key, day_key, week_key, month_key, total, input, cached, cache_write, output, reasoning
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     database.exec("BEGIN IMMEDIATE");
     try {
@@ -205,6 +209,7 @@ export class UsageStore {
           event.usage.total,
           event.usage.input,
           event.usage.cached,
+          event.usage.cacheWrite,
           event.usage.output,
           event.usage.reasoning,
         );
@@ -288,6 +293,40 @@ export class UsageStore {
     };
   }
 
+  listSessions() {
+    return this.database
+      .prepare(`
+        SELECT
+          session_id AS id,
+          MIN(timestamp_ms) AS first_at,
+          MAX(timestamp_ms) AS last_at,
+          MAX(channel) AS channel,
+          MAX(project) AS project,
+          MAX(model) AS model,
+          COUNT(*) AS event_count,
+          COALESCE(SUM(total), 0) AS total,
+          COALESCE(SUM(input), 0) AS input,
+          COALESCE(SUM(cached), 0) AS cached,
+          COALESCE(SUM(cache_write), 0) AS cache_write,
+          COALESCE(SUM(output), 0) AS output,
+          COALESCE(SUM(reasoning), 0) AS reasoning
+        FROM events
+        GROUP BY session_id
+        ORDER BY last_at DESC
+      `)
+      .all()
+      .map((row) => ({
+        id: row.id,
+        firstAt: new Date(Number(row.first_at)).toISOString(),
+        lastAt: new Date(Number(row.last_at)).toISOString(),
+        channel: row.channel,
+        project: row.project,
+        model: row.model,
+        eventCount: Number(row.event_count || 0),
+        total: usageFromRow(row),
+      }));
+  }
+
   aggregateRange(range) {
     return this.database
       .prepare(`
@@ -298,6 +337,7 @@ export class UsageStore {
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
+          COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
@@ -320,6 +360,7 @@ export class UsageStore {
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
+          COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
@@ -356,6 +397,7 @@ export class UsageStore {
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
+          COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events

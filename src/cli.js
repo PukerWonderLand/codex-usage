@@ -7,7 +7,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createUsageServer } from "./server.js";
-import { buildUsageReport, summarizeUsage } from "./usage-core.js";
+import {
+  buildUsageReport,
+  discoverCodexHomes,
+  discoverSessionFiles,
+  parseSessionTurns,
+  summarizeUsage,
+} from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -16,10 +22,30 @@ const DEFAULT_GATEWAY_MEMORY_MB = 256;
 const DEFAULT_STATE_FILE = path.join(homedir(), ".codex-usage", "services.json");
 const SERVICE_LOCK_WAIT_MS = 5000;
 const SERVICE_LOCK_STALE_MS = 15000;
+const REPORTING_PROMPT_START = "<!-- codex-usage:reporting:start -->";
+const REPORTING_PROMPT_END = "<!-- codex-usage:reporting:end -->";
+const REPORTING_PROMPT = `${REPORTING_PROMPT_START}
+# Codex Usage Reporting
+
+本机已安装 \`codex-usage\`，并配置了 \`agent-turn-complete\` Hook。
+
+每次回答用户请求时：
+
+1. 开始处理时运行 \`codex-usage turn --json\`，读取上一回合完整用量。
+2. 完成分析和工具调用、准备最终回答前，运行 \`codex-usage turn --active --json\`。
+3. 在最终回答末尾列出当前回合截至最终回答生成前的：总 token、输入、缓存输入、缓存外输入、输出、推理输出、API 等价成本、上下文剩余量。
+4. 如存在尚未报告的上一回合完整数据，同时补充上一回合数据。
+5. 不得估算或编造数据，也不得把生成最终回答前的数据称为当前回合完整用量。
+6. 注明 API 等价成本不代表 ChatGPT 套餐实际账单。
+7. 如果命令失败，写明：\`Token 用量：codex-usage 当前无法读取数据\`。
+${REPORTING_PROMPT_END}`;
 
 const USAGE = `Usage:
   codex-usage summary [--json] [--home-dir <dir>]
   codex-usage json [--home-dir <dir>]
+  codex-usage turn [--session <id>] [--active] [--json] [--home-dir <dir>]
+  codex-usage hook <notify-json> [--home-dir <dir>]
+  codex-usage setup-reporting [--home-dir <dir>] [--check]
   codex-usage dashboard [--host <host>] [--port <port>] [--home-dir <dir>]
   codex-usage -d [--host <host>] [--port <port>] [--home-dir <dir>]
   codex-usage gateway [--host <host>] [--port <port>] [--home-dir <dir>] [--memory-mb <mb>]
@@ -61,6 +87,59 @@ function readOption(args, name, fallback = undefined) {
 function reportOptions(args) {
   const homeDir = readOption(args, "--home-dir");
   return homeDir ? { homeDir } : {};
+}
+
+function reportingAgentsPath(args) {
+  const homeDir = readOption(args, "--home-dir");
+  return path.join(homeDir || path.join(homedir(), ".codex"), "AGENTS.md");
+}
+
+function upsertManagedBlock(body, block) {
+  const start = body.indexOf(REPORTING_PROMPT_START);
+  const end = body.indexOf(REPORTING_PROMPT_END);
+  if (start !== -1 && end !== -1 && end >= start) {
+    return `${body.slice(0, start)}${block}${body.slice(end + REPORTING_PROMPT_END.length)}`;
+  }
+  const legacyStart = body.search(/^# Codex Usage Reporting\s*$/m);
+  if (
+    legacyStart !== -1
+    && body.includes("codex-usage turn --json")
+    && body.includes("codex-usage turn --active --json")
+  ) {
+    const nextHeading = body.indexOf("\n# ", legacyStart + 1);
+    const legacyEnd = nextHeading === -1 ? body.length : nextHeading + 1;
+    return `${body.slice(0, legacyStart)}${block}\n${body.slice(legacyEnd)}`;
+  }
+  const trimmed = body.trimEnd();
+  return trimmed ? `${trimmed}\n\n${block}\n` : `${block}\n`;
+}
+
+async function setupReporting(args) {
+  const agentsPath = reportingAgentsPath(args);
+  let current = "";
+  try {
+    current = await readFile(agentsPath, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const expected = upsertManagedBlock(current, REPORTING_PROMPT);
+  const configured = current === expected;
+  if (hasFlag(args, "--check")) {
+    console.log(configured ? `Usage reporting prompt is configured: ${agentsPath}` : `Usage reporting prompt needs setup: ${agentsPath}`);
+    if (!configured) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  await mkdir(path.dirname(agentsPath), { recursive: true });
+  if (!configured) {
+    await writeFile(agentsPath, expected);
+  }
+  console.log(`${configured ? "Usage reporting prompt already configured" : "Usage reporting prompt installed"}: ${agentsPath}`);
 }
 
 function stateFilePath(args) {
@@ -257,6 +336,104 @@ function printHuman(summary) {
   for (const channel of summary.channels) {
     console.log(`- ${channel.name}: ${formatNumber(channel.total.total)}`);
   }
+}
+
+function formatPercent(value) {
+  return `${(Number(value || 0) * 100).toFixed(1)}%`;
+}
+
+function printTurn(turn) {
+  console.log(`Turn: ${turn.turnId}`);
+  console.log(`Total tokens: ${formatNumber(turn.usage.total)}`);
+  console.log(`Input: ${formatNumber(turn.usage.input)}`);
+  console.log(`Cached input: ${formatNumber(turn.usage.cached)}`);
+  console.log(`Uncached input: ${formatNumber(turn.cacheMissInput)}`);
+  console.log(`Output: ${formatNumber(turn.usage.output)}`);
+  console.log(`Reasoning output: ${formatNumber(turn.usage.reasoning)}`);
+  console.log(`Cache hit rate: ${formatPercent(turn.cacheHitRate)}`);
+  if (turn.cost?.available) {
+    console.log(`API-equivalent cost: $${turn.cost.total.toFixed(6)}`);
+  } else {
+    console.log(`API-equivalent cost: unavailable for model ${turn.model || "unknown"}`);
+  }
+  if (turn.context) {
+    console.log(
+      `Context remaining: ${formatNumber(turn.context.remaining)} / ${formatNumber(turn.context.window)} (${turn.context.percentRemaining.toFixed(1)}%)`,
+    );
+  }
+  if (turn.compactionCount > 0) {
+    console.log(`Context compactions: ${formatNumber(turn.compactionCount)}`);
+  }
+}
+
+async function findSessionFile(args, sessionId) {
+  const options = reportOptions(args);
+  const homes = await discoverCodexHomes(options);
+  let newest = null;
+  for (const home of homes) {
+    for (const filePath of await discoverSessionFiles(home.path)) {
+      if (sessionId && !path.basename(filePath).includes(sessionId)) {
+        continue;
+      }
+      const info = await stat(filePath);
+      if (!newest || info.mtimeMs > newest.mtimeMs) {
+        newest = { filePath, home, mtimeMs: info.mtimeMs };
+      }
+    }
+  }
+  return newest;
+}
+
+function selectTurn(turns, { active = false, turnId } = {}) {
+  if (turnId) {
+    return turns.findLast((turn) => turn.turnId === turnId) || null;
+  }
+  if (active) {
+    return turns.at(-1) || null;
+  }
+  return turns.findLast((turn) => turn.status === "completed") || turns.at(-1) || null;
+}
+
+async function latestTurn(args, explicitSessionId, explicitTurnId) {
+  const sessionId = explicitSessionId || readOption(args, "--session");
+  const session = await findSessionFile(args, sessionId);
+  if (!session) {
+    throw new Error(sessionId ? `Session not found: ${sessionId}` : "No Codex session found.");
+  }
+  const turns = await parseSessionTurns(session.filePath, session.home);
+  const turn = selectTurn(turns, {
+    active: hasFlag(args, "--active"),
+    turnId: explicitTurnId,
+  });
+  if (!turn) {
+    const target = explicitTurnId ? `turn ${explicitTurnId}` : "a completed or active turn";
+    throw new Error(`Could not find ${target} in session ${sessionId || path.basename(session.filePath)}.`);
+  }
+  return turn;
+}
+
+async function printLatestTurn(args) {
+  const turn = await latestTurn(args);
+  if (hasFlag(args, "--json")) {
+    console.log(JSON.stringify(turn, null, 2));
+  } else {
+    printTurn(turn);
+  }
+}
+
+async function handleHook(args) {
+  const payloadArg = args.find((arg) => arg.trim().startsWith("{"));
+  const payload = payloadArg ? JSON.parse(payloadArg) : {};
+  const sessionId = payload["thread-id"] || payload.thread_id || payload.sessionId;
+  const turnId = payload["turn-id"] || payload.turn_id || payload.turnId;
+  const turn = await latestTurn(args, sessionId, turnId);
+  const snapshotPath = path.join(homedir(), ".codex-usage", "latest-turn.json");
+  await mkdir(path.dirname(snapshotPath), { recursive: true });
+  await writeFile(
+    snapshotPath,
+    JSON.stringify({ capturedAt: new Date().toISOString(), hook: payload, turn }, null, 2),
+  );
+  printTurn(turn);
 }
 
 async function printSummary(command, args) {
@@ -489,6 +666,21 @@ async function main() {
 
   if (command === "stop") {
     await stopServers(args);
+    return;
+  }
+
+  if (command === "turn") {
+    await printLatestTurn(args);
+    return;
+  }
+
+  if (command === "hook") {
+    await handleHook(args);
+    return;
+  }
+
+  if (command === "setup-reporting") {
+    await setupReporting(args);
     return;
   }
 

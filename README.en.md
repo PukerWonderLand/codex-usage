@@ -1,5 +1,9 @@
 # Codex Usage
 
+[简体中文](README.md) | [English](README.en.md)
+
+[Live static demo](https://pukerwonderland.github.io/codex-usage/)
+
 [中文](README.md) | English
 
 Codex Usage is a local-first token usage analytics tool for Codex. It reads official Codex session logs on your machine, aggregates usage from CLI, Codex Desktop, Codex Exec, JetBrains/PyCharm plugins, and other integrations, then presents the results through a CLI summary, a local web dashboard, a background gateway, static HTML export, and JSON APIs.
@@ -10,6 +14,7 @@ It helps you answer questions like: How many tokens did I use today? Which proje
 
 - Scans official Codex session logs locally; no external upload is required
 - Tracks total tokens, input, cached input, output, reasoning output, and session count
+- Shows per-session and native Codex-turn tokens, cache behavior, API-equivalent cost, and context headroom
 - Supports today, this week, this month, all time, and custom date ranges
 - Shows time trends by hour, day, week, or month
 - Breaks usage down by channel, project directory, model, and scanned home
@@ -131,6 +136,41 @@ node src/cli.js json
 node src/cli.js summary --json
 ```
 
+Inspect the latest turn or bind to a session:
+
+```bash
+codex-usage turn
+codex-usage turn --session 019fefcd-2519-78c3-acb6-6ada3b090da7
+codex-usage turn --json
+```
+
+Enable automatic usage reporting at the end of answers in every new Codex session:
+
+```bash
+codex-usage setup-reporting
+codex-usage setup-reporting --check
+```
+
+This command creates or updates a marked, managed block in `~/.codex/AGENTS.md`. It is idempotent and preserves unrelated user instructions. Before the final answer is generated, only usage "as of answer generation" is available; the exact completed-turn value is captured by the hook and can be reported at the start of the next turn.
+
+Export a single-file static dashboard for one session:
+
+```bash
+node src/static-export.js --out docs/index.html --session <session-id>
+```
+
+A session-scoped export keeps only that session's usage events and removes server-only local log paths, making it suitable for GitHub Pages.
+
+Connect Codex's turn-complete callback in `~/.codex/config.toml`:
+
+```toml
+notify = ["codex-usage", "hook"]
+```
+
+The hook refreshes `~/.codex-usage/latest-turn.json` after every turn. Codex currently discards notify subprocess output, so an external utility cannot reliably inject text into the main TUI; use `codex-usage turn` or display the snapshot in a companion terminal.
+
+Costs are **API-equivalent estimates**, not ChatGPT or Codex subscription charges. GPT-5.6 Sol pricing is versioned in `src/pricing.js`, including the official long-context threshold and multipliers. Context headroom follows the Codex `/status` calculation with its 12K baseline reserve. Requests also show uncached input, cache hit rate, and detected context compaction.
+
 ## Dashboard
 
 The web dashboard supports:
@@ -138,6 +178,7 @@ The web dashboard supports:
 - Today, this week, this month, all time, and custom date ranges
 - Hourly, daily, weekly, and monthly aggregation
 - Total tokens, input, cached input, output, reasoning output, and session count
+- Session selection, turn-level usage and cost, cache details, context headroom, and compaction count
 - Channel breakdown
 - Timeline chart
 - Top 25 project directories
@@ -194,6 +235,10 @@ GET /api/status?since=<fingerprint>
 GET /api/usage
 GET /api/usage?force=1
 GET /api/usage?detail=full
+GET /api/pricing
+GET /api/sessions
+GET /api/sessions/<sessionId>/turns
+GET /api/sessions/<sessionId>/turns/latest
 GET /api/summary
 GET /api/imports
 POST /api/imports
@@ -207,6 +252,8 @@ Endpoint notes:
 - `/api/usage?force=1` forces a full rescan
 - `/api/usage?detail=full` returns the full `report` for debugging
 - `/api/summary` returns only the summary wrapper
+- `/api/sessions` lists selectable sessions; the turn routes expose native per-turn details
+- `/api/pricing` exposes the built-in pricing version for auditing
 - `/api/imports` lists, adds, or removes directories imported from the dashboard
 
 The default low-memory `gateway` may reject `detail=full` to avoid excessive memory usage. For full detail debugging, restart with a larger memory limit:

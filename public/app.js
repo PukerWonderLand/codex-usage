@@ -8,6 +8,11 @@ const state = {
   startDate: "",
   endDate: "",
   recentValue: "1个月",
+  sessionId: new URLSearchParams(globalThis.location?.search || "").get("sessionId")
+    || globalThis.__CODEX_USAGE_DEFAULT_SESSION_ID__
+    || "",
+  sessions: [],
+  turnData: null,
   now: null,
   autoRefreshTimer: null,
   theme: "light",
@@ -84,6 +89,14 @@ function formatTokens(value) {
 
 function formatCompact(value) {
   return compactFormatter.format(Math.round(value || 0));
+}
+
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 4,
+  }).format(value || 0);
 }
 
 function escapeHtml(value) {
@@ -718,8 +731,11 @@ function summarizeComparison(allEvents, range, currentTotals) {
 }
 
 export function summarize(report) {
-  const range = getRange(report.events);
-  const events = report.events.filter((event) => {
+  const scopedEvents = state.sessionId
+    ? report.events.filter((event) => event.sessionId === state.sessionId)
+    : report.events;
+  const range = getRange(scopedEvents);
+  const events = scopedEvents.filter((event) => {
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -746,7 +762,7 @@ export function summarize(report) {
   return {
     range,
     totals,
-    comparison: summarizeComparison(report.events, range, totals),
+    comparison: summarizeComparison(scopedEvents, range, totals),
     timeline,
     channels,
     projects,
@@ -1274,6 +1290,54 @@ function currentMetadata() {
   return state.metadata;
 }
 
+function renderSessionInsights() {
+  const data = state.turnData;
+  const insights = $("#sessionInsights");
+  const panel = $("#turnPanel");
+  if (!state.sessionId || !data) {
+    insights.hidden = true;
+    panel.hidden = true;
+    return;
+  }
+  insights.hidden = false;
+  panel.hidden = false;
+  const cost = data.summary.cost;
+  $("#sessionCost").textContent = cost.available ? formatUsd(cost.total) : "暂无定价";
+  $("#sessionCostBreakdown").textContent = cost.available
+    ? `普通输入 ${formatUsd(cost.components.uncachedInput)} · 缓存 ${formatUsd(cost.components.cachedInput)} · 输出 ${formatUsd(cost.components.output)}`
+    : "当前模型没有价格配置";
+  const context = data.summary.latestContext;
+  if (context) {
+    $("#contextRemaining").textContent = `${formatTokens(context.remaining)} tokens`;
+    $("#contextBar").style.width = `${context.percentRemaining}%`;
+    $("#contextBar").style.background = context.percentRemaining < 15 ? "#d14" : "var(--green)";
+    $("#contextDetails").textContent = `${context.percentRemaining}% 剩余 · 已用 ${formatTokens(context.used)} / ${formatTokens(context.window)} · 压缩 ${data.summary.compactionCount} 次`;
+  } else {
+    $("#contextRemaining").textContent = "暂无数据";
+    $("#contextDetails").textContent = "等待下一个 token_count 事件";
+  }
+  const totals = data.turns.reduce((sum, turn) => {
+    sum.input += turn.usage.input;
+    sum.cached += turn.usage.cached;
+    sum.miss += turn.cacheMissInput;
+    return sum;
+  }, { input: 0, cached: 0, miss: 0 });
+  const hitRate = totals.input > 0 ? totals.cached / totals.input : 0;
+  $("#cacheHitRate").textContent = `${(hitRate * 100).toFixed(1)}%`;
+  $("#cacheDetails").textContent = `缓存输入 ${formatTokens(totals.cached)} · 缓存外输入 ${formatTokens(totals.miss)}`;
+  $("#turnSummary").textContent = `${data.summary.completedTurnCount}/${data.summary.turnCount} 已完成`;
+  $("#turnRows").innerHTML = [...data.turns].reverse().map((turn) => {
+    const contextText = turn.context ? `${turn.context.percentRemaining}% (${formatCompact(turn.context.remaining)})` : "-";
+    return `<tr title="${escapeHtml(turn.turnId)}">
+      <td>${escapeHtml(new Date(turn.completedAt || turn.startedAt).toLocaleString())}</td>
+      <td>${escapeHtml(`${turn.turnId.slice(0, 8)}…`)}</td>
+      <td>${formatTokens(turn.usage.input)}</td><td>${formatTokens(turn.usage.cached)}</td>
+      <td>${formatTokens(turn.cacheMissInput)}</td><td>${formatTokens(turn.usage.output)}</td>
+      <td>${contextText}</td><td>${turn.cost.available ? formatUsd(turn.cost.total) : "-"}</td>
+    </tr>`;
+  }).join("");
+}
+
 function render() {
   const summary = currentSummary();
   const metadata = currentMetadata();
@@ -1282,6 +1346,7 @@ function render() {
   }
   hideUsageTooltip();
   renderMetrics(summary);
+  renderSessionInsights();
   renderComparison(summary);
   $("#rangeLabel").textContent = rangeLabel(summary);
   const channelColors = getChannelColors(summary.channels);
@@ -1600,6 +1665,10 @@ function usageQuery({ force = false, skipCheck = false } = {}) {
   if (state.preset === "recent" && state.recentValue) {
     params.set("recentValue", state.recentValue);
   }
+  if (state.sessionId) {
+    params.set("sessionId", state.sessionId);
+    params.set("detail", "full");
+  }
   if (force) {
     params.set("force", "1");
   }
@@ -1619,6 +1688,7 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
       state.metadata = metadataFromReport(embeddedReport);
       state.summary = null;
       state.fingerprint = "static";
+      state.turnData = window.__CODEX_USAGE_TURN_DATA__ || null;
       setAutoRefreshStatus("静态快照 · 自动刷新关闭 · 运行 npm run export 后会生成新快照");
     } else {
       const response = await fetch(`/api/usage${usageQuery({ force, skipCheck })}`);
@@ -1626,10 +1696,17 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
         throw new Error(`API ${response.status}`);
       }
       const data = await response.json();
-      state.report = null;
+      state.report = data.report || null;
       state.metadata = data.metadata;
-      state.summary = data.summary;
+      state.summary = data.report ? null : data.summary;
       state.fingerprint = data.fingerprint || "";
+      if (state.sessionId) {
+        const turnsResponse = await fetch(`/api/sessions/${encodeURIComponent(state.sessionId)}/turns`);
+        if (!turnsResponse.ok) throw new Error(`Turn API ${turnsResponse.status}`);
+        state.turnData = await turnsResponse.json();
+      } else {
+        state.turnData = null;
+      }
       setAutoRefreshStatus(autoRefreshReadyMessage(data.checkedAt));
     }
     const metadata = currentMetadata();
@@ -1641,6 +1718,45 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
   } finally {
     $("#refreshButton").disabled = false;
   }
+}
+
+function sessionOptionLabel(session) {
+  const when = new Date(session.lastAt).toLocaleString();
+  const shortId = session.id.length > 16 ? `${session.id.slice(0, 8)}…${session.id.slice(-4)}` : session.id;
+  return `${when} · ${shortId} · ${session.model || "未知模型"} · ${formatTokens(session.total?.total)} tokens`;
+}
+
+function renderSessionOptions() {
+  const select = $("#sessionSelect");
+  select.innerHTML = `<option value="">全部会话</option>` + state.sessions
+    .map((session) => `<option value="${escapeHtml(session.id)}">${escapeHtml(sessionOptionLabel(session))}</option>`)
+    .join("");
+  select.value = state.sessionId;
+}
+
+async function loadSessions() {
+  if (isStaticSnapshot()) {
+    state.sessions = window.__CODEX_USAGE_REPORT__?.sessions || [];
+  } else {
+    const response = await fetch("/api/sessions");
+    if (!response.ok) {
+      throw new Error(`会话 API ${response.status}`);
+    }
+    state.sessions = (await response.json()).sessions || [];
+  }
+  renderSessionOptions();
+}
+
+function selectSession(sessionId) {
+  state.sessionId = sessionId || "";
+  const url = new URL(window.location.href);
+  if (state.sessionId) {
+    url.searchParams.set("sessionId", state.sessionId);
+  } else {
+    url.searchParams.delete("sessionId");
+  }
+  history.replaceState(null, "", url);
+  refreshViewForFilters();
 }
 
 async function checkForUpdates() {
@@ -1721,6 +1837,8 @@ function bootDashboard() {
     state.bucket = event.target.value;
     refreshViewForFilters();
   });
+
+  $("#sessionSelect").addEventListener("change", (event) => selectSession(event.target.value));
 
   for (const field of ["start", "end"]) {
     const input = dateInputForField(field);
@@ -1856,7 +1974,9 @@ function bootDashboard() {
   updateRecentControls();
   updateBucketSelect();
   setImportControlsDisabled(isStaticSnapshot());
-  loadUsage().then(startAutoRefresh);
+  Promise.all([loadSessions(), loadUsage()]).then(startAutoRefresh).catch((error) => {
+    $("#subtitle").textContent = `加载失败：${error.message}`;
+  });
 }
 
 if (typeof document !== "undefined") {

@@ -36,6 +36,14 @@
       </header>
 
       <section class="toolbar" aria-label="筛选">
+        <div class="control-group session-control">
+          <label>
+            会话
+            <select id="sessionSelect" aria-label="选择 Codex 会话">
+              <option value="">全部会话</option>
+            </select>
+          </label>
+        </div>
         <div class="control-group">
           <span>范围</span>
           <div class="segmented" id="presetButtons">
@@ -151,6 +159,36 @@
           <span>会话</span>
           <strong id="sessionCount">-</strong>
         </article>
+      </section>
+
+      <section id="sessionInsights" class="insights-grid" hidden>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>API 等价成本</h2></div>
+          <strong id="sessionCost">-</strong>
+          <p id="sessionCostBreakdown" class="insight-copy"></p>
+          <p class="insight-note">按公开 API 定价估算，不代表 ChatGPT 套餐实际账单。</p>
+        </article>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>上下文窗口</h2></div>
+          <strong id="contextRemaining">-</strong>
+          <div class="context-track"><span id="contextBar"></span></div>
+          <p id="contextDetails" class="insight-copy"></p>
+        </article>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>缓存效率</h2></div>
+          <strong id="cacheHitRate">-</strong>
+          <p id="cacheDetails" class="insight-copy"></p>
+        </article>
+      </section>
+
+      <section id="turnPanel" class="panel" hidden>
+        <div class="panel-heading"><h2>每轮对话</h2><span id="turnSummary"></span></div>
+        <div class="turn-table-wrap">
+          <table class="turn-table">
+            <thead><tr><th>完成时间</th><th>Turn</th><th>输入</th><th>缓存</th><th>缓存外</th><th>输出</th><th>上下文剩余</th><th>成本</th></tr></thead>
+            <tbody id="turnRows"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="comparisonSummary" class="comparison-strip" aria-label="趋势变化"></section>

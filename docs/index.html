@@ -1,0 +1,3183 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Usage</title>
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem("codexUsageTheme");
+          const fallback = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.dataset.theme = saved || fallback;
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <style>
+:root {
+  color-scheme: light;
+  --bg: #f5f7f8;
+  --panel: #ffffff;
+  --control: #ffffff;
+  --control-hover: #9fb2c4;
+  --ink: #1f2933;
+  --muted: #607080;
+  --line: #d9e0e6;
+  --blue: #2364aa;
+  --green: #2f855a;
+  --gold: #b7791f;
+  --red: #c05621;
+  --track: #e9eef2;
+  --chart-line: #d9e0e6;
+  --chart-text: #607080;
+  --active-ink: #ffffff;
+  --shadow: 0 10px 30px rgba(31, 41, 51, 0.08);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101214;
+  --panel: #181c20;
+  --control: #14181c;
+  --control-hover: #5d6b78;
+  --ink: #eef2f5;
+  --muted: #9aa8b4;
+  --line: #303841;
+  --blue: #60a5fa;
+  --green: #34d399;
+  --gold: #f2c36b;
+  --red: #fb923c;
+  --track: #27313a;
+  --chart-line: #38434d;
+  --chart-text: #9aa8b4;
+  --active-ink: #071013;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.shell {
+  width: min(1440px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 16px;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+#subtitle,
+#autoRefreshStatus,
+.panel-heading span,
+.metric span,
+.control-group span,
+label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#autoRefreshStatus {
+  margin-top: 4px;
+}
+
+#refreshButton,
+#importButton,
+#pickImportDirectoryButton,
+.panel-action,
+.dialog-actions button,
+.theme-toggle button,
+.segmented button,
+.segmented .recent-segment {
+  border: 1px solid var(--line);
+  background: var(--control);
+  color: var(--ink);
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#refreshButton:hover,
+#importButton:hover,
+#pickImportDirectoryButton:hover,
+.panel-action:hover,
+.dialog-actions button:hover,
+.theme-toggle button:hover,
+.segmented button:hover,
+.segmented .recent-segment:hover {
+  border-color: var(--control-hover);
+}
+
+#submitImportButton {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--active-ink);
+}
+
+.panel-action {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.theme-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-toggle button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: var(--active-ink);
+}
+
+.toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.control-group {
+  display: grid;
+  gap: 8px;
+}
+
+.session-control select {
+  width: min(520px, 78vw);
+}
+
+.insights-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.insight-card > strong { display: block; margin: 12px 0 8px; font-size: clamp(1.5rem, 3vw, 2.2rem); }
+.insight-copy, .insight-note { margin: 6px 0 0; color: var(--muted); }
+.insight-note { font-size: 0.82rem; }
+.context-track { overflow: hidden; height: 10px; border-radius: 999px; background: var(--track); }
+.context-track span { display: block; width: 0; height: 100%; background: var(--green); transition: width 180ms ease; }
+.turn-table-wrap { overflow-x: auto; }
+.turn-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.turn-table th, .turn-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; }
+.turn-table th:first-child, .turn-table td:first-child, .turn-table th:nth-child(2), .turn-table td:nth-child(2) { text-align: left; }
+.turn-table tbody tr:hover { background: var(--track); }
+@media (max-width: 820px) { .insights-grid { grid-template-columns: 1fr; } }
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented button.active,
+.segmented .recent-segment.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--active-ink);
+}
+
+.custom-range {
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+}
+
+.date-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.date-input-wrap input {
+  width: 100%;
+  padding-right: 38px;
+}
+
+.date-picker-button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.date-picker-button::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 2px solid currentColor;
+  border-top-width: 4px;
+  border-radius: 2px;
+}
+
+.date-picker-button:hover,
+.date-picker-button:focus-visible {
+  background: var(--track);
+  color: var(--ink);
+}
+
+.date-picker-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 296px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.date-picker-popover[hidden] {
+  display: none;
+}
+
+.date-picker-heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.date-picker-title {
+  text-align: center;
+  font-weight: 700;
+}
+
+.date-picker-nav,
+.date-picker-day {
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.date-picker-nav:hover,
+.date-picker-nav:focus-visible,
+.date-picker-day:hover,
+.date-picker-day:focus-visible {
+  background: var(--track);
+  border-color: var(--line);
+}
+
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.date-picker-weekday {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.date-picker-day {
+  font-variant-numeric: tabular-nums;
+}
+
+.date-picker-day.outside-month {
+  color: var(--muted);
+  opacity: 0.58;
+}
+
+.date-picker-day.selected {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--active-ink);
+  opacity: 1;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+input,
+select {
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+.segmented .recent-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 14px;
+  position: relative;
+}
+
+.segmented .recent-segment .recent-segment-label {
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.recent-segment-input {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 30px 0 10px;
+  outline: 0;
+}
+
+.recent-combobox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 112px;
+  height: 26px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--ink);
+}
+
+.recent-combobox:focus-within {
+  border-color: var(--control-hover);
+}
+
+.segmented .recent-menu-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.segmented .recent-menu-button::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+
+.segmented .recent-menu-button:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.recent-segment.active .recent-combobox {
+  border-color: var(--line);
+}
+
+.segmented .recent-segment.active .recent-menu-button {
+  color: var(--ink);
+}
+
+.recent-range-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 4px;
+  display: grid;
+  gap: 2px;
+  width: 112px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control);
+  box-shadow:
+    0 14px 34px rgba(31, 41, 51, 0.14),
+    0 2px 8px rgba(31, 41, 51, 0.08);
+}
+
+.recent-range-menu[hidden] {
+  display: none;
+}
+
+.recent-range-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.recent-range-menu button:hover,
+.recent-range-menu button:focus-visible {
+  background: var(--track);
+  border-color: transparent;
+  outline: 0;
+}
+
+.recent-range-menu button[aria-selected="true"] {
+  background: var(--track);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.comparison-strip {
+  /* 趋势卡片放在指标和图表之间，方便横向比较变化、均速变化和上一周期总量。 */
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.comparison-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.comparison-item span,
+.comparison-item small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.comparison-item strong {
+  font-size: 18px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparison-item.up strong {
+  color: var(--red);
+}
+
+.comparison-item.down strong {
+  color: var(--green);
+}
+
+.metric,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.metric {
+  min-width: 0;
+  padding: 14px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  line-height: 1.1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-grid,
+.wide-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(340px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.wide-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.75fr);
+}
+
+.panel {
+  min-width: 0;
+  padding: 16px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.list-tools {
+  /* Search and expand controls stay compact in desktop panels and wrap on mobile. */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: min(280px, 60%);
+}
+
+.list-tools input {
+  width: min(180px, 100%);
+}
+
+.chart-panel {
+  min-height: 390px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 320px;
+}
+
+.timeline-details {
+  /* This list mirrors the canvas data for touch and keyboard users. */
+  display: grid;
+  gap: 6px;
+  max-height: 168px;
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.timeline-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.timeline-detail-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-detail-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar-list,
+.compact-list,
+.home-list {
+  display: grid;
+  gap: 10px;
+}
+
+.bar-row,
+.compact-row,
+.home-row {
+  display: grid;
+  gap: 6px;
+}
+
+.bar-row:focus-visible,
+.compact-row:focus-visible,
+.timeline-detail-row:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.bar-label,
+.compact-label,
+.home-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.bar-name,
+.compact-name,
+.home-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-value,
+.compact-value,
+.home-kind {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.home-meta {
+  /* Directory status metadata is dense but wraps before it can overflow paths. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.home-status {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.home-reason {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.home-remove {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--control);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.bar-track {
+  height: 10px;
+  overflow: hidden;
+  background: var(--track);
+  border-radius: 999px;
+}
+
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--blue));
+}
+
+.compact-row,
+.home-row {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.compact-row:last-child,
+.home-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 20px 0;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.dialog-backdrop[hidden] {
+  display: none;
+}
+
+.dialog {
+  width: min(520px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.dialog-heading,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-copy,
+.dialog-message {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dialog form {
+  display: grid;
+  gap: 14px;
+}
+
+.path-picker {
+  /* Keep manual entry first while offering a native folder chooser beside it. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dialog-message.error {
+  color: var(--red);
+}
+
+.usage-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.usage-tooltip[hidden] {
+  display: none;
+}
+
+.usage-tooltip-title {
+  margin-bottom: 8px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.usage-tooltip-subtitle {
+  margin: 9px 0 5px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.usage-tooltip-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 5px 16px;
+}
+
+.usage-tooltip-label {
+  color: var(--muted);
+}
+
+.usage-tooltip-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 1020px) {
+  .metrics,
+  .comparison-strip,
+  .main-grid,
+  .wide-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .path-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100vw - 20px, 720px);
+    padding-top: 14px;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
+  .metrics,
+  .comparison-strip,
+  .main-grid,
+  .wide-grid,
+  .custom-range {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-item {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .list-tools {
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .list-tools input {
+    flex: 1;
+    width: auto;
+  }
+
+  .metric strong {
+    font-size: 20px;
+  }
+}
+
+</style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Codex Usage</h1>
+          <p id="subtitle">正在扫描本机 Codex 用量...</p>
+          <p id="autoRefreshStatus">自动刷新准备中...</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="theme-toggle" id="themeToggle" role="group" aria-label="主题">
+            <button type="button" data-theme-option="light">浅色</button>
+            <button type="button" data-theme-option="dark">深色</button>
+          </div>
+          <button id="importButton" type="button">导入目录</button>
+          <button id="refreshButton" type="button">强制重扫</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="筛选">
+        <div class="control-group session-control">
+          <label>
+            会话
+            <select id="sessionSelect" aria-label="选择 Codex 会话">
+              <option value="">全部会话</option>
+            </select>
+          </label>
+        </div>
+        <div class="control-group">
+          <span>范围</span>
+          <div class="segmented" id="presetButtons">
+            <button type="button" data-preset="today">今日</button>
+            <button type="button" data-preset="week">本周</button>
+            <button type="button" data-preset="month">本月</button>
+            <button type="button" data-preset="all" class="active">全部</button>
+            <div class="recent-segment" data-preset="recent">
+              <span class="recent-segment-label">最近</span>
+              <span class="recent-combobox">
+                <input
+                  id="recentValue"
+                  class="recent-segment-input"
+                  type="text"
+                  value="1个月"
+                  autocomplete="off"
+                  aria-label="最近范围"
+                  aria-controls="recentRangeMenu"
+                  aria-expanded="false"
+                  aria-haspopup="listbox"
+                />
+                <button
+                  id="recentMenuButton"
+                  class="recent-menu-button"
+                  type="button"
+                  aria-label="展开最近范围选项"
+                  aria-controls="recentRangeMenu"
+                  aria-expanded="false"
+                >
+                </button>
+              </span>
+              <div id="recentRangeMenu" class="recent-range-menu" role="listbox" hidden>
+                <button type="button" role="option" data-recent-option="1天" aria-selected="false">1天</button>
+                <button type="button" role="option" data-recent-option="1周" aria-selected="false">1周</button>
+                <button type="button" role="option" data-recent-option="1个月" aria-selected="true">1个月</button>
+                <button type="button" role="option" data-recent-option="2个月" aria-selected="false">2个月</button>
+                <button type="button" role="option" data-recent-option="3个月" aria-selected="false">3个月</button>
+                <button type="button" role="option" data-recent-option="半年" aria-selected="false">半年</button>
+                <button type="button" role="option" data-recent-option="一年" aria-selected="false">一年</button>
+              </div>
+            </div>
+            <button type="button" data-preset="custom">自定义</button>
+          </div>
+        </div>
+        <div class="control-group custom-range">
+          <label>
+            开始
+            <span class="date-input-wrap">
+              <input id="startDate" type="text" autocomplete="off" inputmode="numeric" placeholder="年/月/日" />
+              <button
+                class="date-picker-button"
+                type="button"
+                data-date-picker-button="start"
+                aria-label="打开开始日期日历"
+                aria-controls="startDatePicker"
+                aria-expanded="false"
+              ></button>
+              <div id="startDatePicker" class="date-picker-popover" data-date-picker="start" hidden></div>
+            </span>
+          </label>
+          <label>
+            结束
+            <span class="date-input-wrap">
+              <input id="endDate" type="text" autocomplete="off" inputmode="numeric" placeholder="年/月/日" />
+              <button
+                class="date-picker-button"
+                type="button"
+                data-date-picker-button="end"
+                aria-label="打开结束日期日历"
+                aria-controls="endDatePicker"
+                aria-expanded="false"
+              ></button>
+              <div id="endDatePicker" class="date-picker-popover" data-date-picker="end" hidden></div>
+            </span>
+          </label>
+        </div>
+        <div class="control-group">
+          <label>
+            粒度
+            <select id="bucketSelect">
+              <!-- 小时粒度用于今日视图展示日内用量变化。 -->
+              <option value="hour">按小时</option>
+              <option value="day" selected>按天</option>
+              <option value="week">按周</option>
+              <option value="month">按月</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="总览">
+        <article class="metric">
+          <span>总 tokens</span>
+          <strong id="totalTokens">-</strong>
+        </article>
+        <article class="metric">
+          <span>输入</span>
+          <strong id="inputTokens">-</strong>
+        </article>
+        <article class="metric">
+          <span>缓存输入</span>
+          <strong id="cachedTokens">-</strong>
+        </article>
+        <article class="metric">
+          <span>输出</span>
+          <strong id="outputTokens">-</strong>
+        </article>
+        <article class="metric">
+          <span>推理输出</span>
+          <strong id="reasoningTokens">-</strong>
+        </article>
+        <article class="metric">
+          <span>会话</span>
+          <strong id="sessionCount">-</strong>
+        </article>
+      </section>
+
+      <section id="sessionInsights" class="insights-grid" hidden>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>API 等价成本</h2></div>
+          <strong id="sessionCost">-</strong>
+          <p id="sessionCostBreakdown" class="insight-copy"></p>
+          <p class="insight-note">按公开 API 定价估算，不代表 ChatGPT 套餐实际账单。</p>
+        </article>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>上下文窗口</h2></div>
+          <strong id="contextRemaining">-</strong>
+          <div class="context-track"><span id="contextBar"></span></div>
+          <p id="contextDetails" class="insight-copy"></p>
+        </article>
+        <article class="panel insight-card">
+          <div class="panel-heading"><h2>缓存效率</h2></div>
+          <strong id="cacheHitRate">-</strong>
+          <p id="cacheDetails" class="insight-copy"></p>
+        </article>
+      </section>
+
+      <section id="turnPanel" class="panel" hidden>
+        <div class="panel-heading"><h2>每轮对话</h2><span id="turnSummary"></span></div>
+        <div class="turn-table-wrap">
+          <table class="turn-table">
+            <thead><tr><th>完成时间</th><th>Turn</th><th>输入</th><th>缓存</th><th>缓存外</th><th>输出</th><th>上下文剩余</th><th>成本</th></tr></thead>
+            <tbody id="turnRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="comparisonSummary" class="comparison-strip" aria-label="趋势变化"></section>
+
+      <section class="main-grid">
+        <section class="panel chart-panel">
+          <div class="panel-heading">
+            <h2>时间分布</h2>
+            <span id="rangeLabel"></span>
+          </div>
+          <canvas id="timelineChart" width="960" height="320"></canvas>
+          <div id="timelineDetails" class="timeline-details" aria-label="时间分布明细"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>渠道分布</h2>
+          </div>
+          <div id="channelList" class="bar-list"></div>
+        </section>
+      </section>
+
+      <section class="wide-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>项目目录</h2>
+            <div class="list-tools">
+              <input id="projectSearch" type="search" autocomplete="off" placeholder="搜索项目" aria-label="搜索项目目录" />
+              <button id="projectToggle" class="panel-action" type="button" aria-expanded="false" hidden>展开</button>
+            </div>
+          </div>
+          <div id="projectList" class="compact-list"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>模型分布</h2>
+            <div class="list-tools">
+              <input id="modelSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型" />
+              <button id="modelToggle" class="panel-action" type="button" aria-expanded="false" hidden>展开</button>
+            </div>
+          </div>
+          <div id="modelList" class="compact-list"></div>
+        </section>
+      </section>
+
+      <section class="panel homes-panel">
+        <div class="panel-heading">
+          <h2>扫描目录</h2>
+          <button id="addImportButton" class="panel-action" type="button">添加</button>
+        </div>
+        <div id="homeList" class="home-list"></div>
+      </section>
+    </main>
+    <div id="importDialog" class="dialog-backdrop" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="importDialogTitle">
+        <form id="importForm">
+          <div class="dialog-heading">
+            <h2 id="importDialogTitle">导入目录</h2>
+            <button id="closeImportDialogButton" class="icon-button" type="button" aria-label="关闭">×</button>
+          </div>
+          <p class="dialog-copy">支持 Codex home，或包含 .codex-usage/usage.jsonl 的项目目录。</p>
+          <label>
+            目录路径
+            <div class="path-picker">
+              <input id="importPath" type="text" autocomplete="off" placeholder="/Users/you/project/openai_codex" />
+              <button id="pickImportDirectoryButton" type="button">选择文件夹</button>
+            </div>
+          </label>
+          <p id="importMessage" class="dialog-message" role="status"></p>
+          <div class="dialog-actions">
+            <button id="cancelImportButton" type="button">取消</button>
+            <button id="submitImportButton" type="submit">导入</button>
+          </div>
+        </form>
+      </section>
+    </div>
+    <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>
+
+    <script>window.__CODEX_USAGE_REPORT__ = {"generatedAt":"2026-08-11T09:06:35.755Z","homes":[{"id":"main-main-codex-1","label":"Main Codex","kind":"main"}],"sessions":[{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58","firstAt":"2026-08-11T08:38:18.881Z","lastAt":"2026-08-11T08:52:43.334Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","cliVersion":"0.147.0","modelProvider":"openai","eventCount":32,"total":{"total":1632437,"input":1622569,"cached":1516544,"cacheWrite":0,"output":9868,"reasoning":2770}}],"events":[{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:1","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:38:28.648Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":14372,"input":14206,"cached":9984,"cacheWrite":0,"output":166,"reasoning":28}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:2","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:38:35.775Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":15582,"input":15498,"cached":14080,"cacheWrite":0,"output":84,"reasoning":33}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:3","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:38:41.325Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":19504,"input":19394,"cached":15104,"cacheWrite":0,"output":110,"reasoning":25}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:4","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:38:50.022Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":21657,"input":21388,"cached":19200,"cacheWrite":0,"output":269,"reasoning":32}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:5","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:38:59.812Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":21969,"input":21693,"cached":21248,"cacheWrite":0,"output":276,"reasoning":50}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:6","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:39:07.460Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":22251,"input":22005,"cached":5888,"cacheWrite":0,"output":246,"reasoning":13}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:7","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:39:20.484Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":32529,"input":32198,"cached":21248,"cacheWrite":0,"output":331,"reasoning":149}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:8","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:40:21.547Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":32902,"input":32570,"cached":31488,"cacheWrite":0,"output":332,"reasoning":42}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:9","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:40:52.349Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":33014,"input":32913,"cached":31488,"cacheWrite":0,"output":101,"reasoning":16}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:10","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:41:01.878Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":33436,"input":33162,"cached":32512,"cacheWrite":0,"output":274,"reasoning":145}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:11","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:41:35.282Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":34184,"input":33940,"cached":32512,"cacheWrite":0,"output":244,"reasoning":65}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:12","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:41:41.374Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":47015,"input":46876,"cached":33536,"cacheWrite":0,"output":139,"reasoning":14}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:13","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:41:52.221Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":49810,"input":49460,"cached":45824,"cacheWrite":0,"output":350,"reasoning":251}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:14","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:42:05.961Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":51659,"input":51197,"cached":48896,"cacheWrite":0,"output":462,"reasoning":161}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:15","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:42:27.212Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":51890,"input":51671,"cached":50944,"cacheWrite":0,"output":219,"reasoning":20}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:16","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:42:33.232Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":52353,"input":52217,"cached":50944,"cacheWrite":0,"output":136,"reasoning":13}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:17","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:42:57.391Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":56872,"input":55658,"cached":51968,"cacheWrite":0,"output":1214,"reasoning":239}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:18","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:43:02.105Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":56975,"input":56896,"cached":55040,"cacheWrite":0,"output":79,"reasoning":9}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:19","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:43:08.906Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":57862,"input":57740,"cached":56064,"cacheWrite":0,"output":122,"reasoning":20}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:20","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:43:23.270Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":58297,"input":58030,"cached":57088,"cacheWrite":0,"output":267,"reasoning":208}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:21","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:43:31.778Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":62363,"input":62050,"cached":57088,"cacheWrite":0,"output":313,"reasoning":44}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:22","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:49:47.602Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":65389,"input":63965,"cached":61184,"cacheWrite":0,"output":1424,"reasoning":419}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:23","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:50:38.837Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":65725,"input":65431,"cached":63232,"cacheWrite":0,"output":294,"reasoning":127}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:24","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:50:45.393Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":66925,"input":66851,"cached":65280,"cacheWrite":0,"output":74,"reasoning":21}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:25","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:50:53.275Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":70913,"input":70794,"cached":66304,"cacheWrite":0,"output":119,"reasoning":25}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:26","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:51:12.645Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":71830,"input":70936,"cached":70400,"cacheWrite":0,"output":894,"reasoning":316}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:27","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:06.960Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":72411,"input":72125,"cached":70400,"cacheWrite":0,"output":286,"reasoning":141}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:28","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:12.933Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":73596,"input":73537,"cached":71424,"cacheWrite":0,"output":59,"reasoning":7}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:29","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:18.257Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":77598,"input":77471,"cached":72448,"cacheWrite":0,"output":127,"reasoning":19}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:30","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:29.133Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":79667,"input":79282,"cached":76544,"cacheWrite":0,"output":385,"reasoning":10}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:31","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:34.002Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":79802,"input":79691,"cached":78592,"cacheWrite":0,"output":111,"reasoning":30}},{"id":"019feff8-3f73-7b40-a68d-36b4179b6d58:32","sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","timestamp":"2026-08-11T08:52:43.312Z","homeId":"main-main-codex-1","homeLabel":"Main Codex","homePath":"/home/codex/.codex","channel":"CLI","source":"cli","originator":"codex-tui","cwd":"/home/codex","model":"gpt-5.6-sol","total":{"total":82085,"input":81724,"cached":78592,"cacheWrite":0,"output":361,"reasoning":78}}],"warnings":[]};
+window.__CODEX_USAGE_TURN_DATA__ = {"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turns":[{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019feff8-f7ec-7f52-bd7d-54f635543ef1","startedAt":"2026-08-11T08:38:18.881Z","completedAt":"2026-08-11T08:39:20.503Z","lastEventAt":"2026-08-11T08:39:20.484Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":147864,"input":146382,"cached":106752,"cacheWrite":0,"output":1482,"reasoning":330},"requests":[{"timestamp":"2026-08-11T08:38:28.648Z","usage":{"total":14372,"input":14206,"cached":9984,"cacheWrite":0,"output":166,"reasoning":28},"context":{"window":258400,"used":14372,"remaining":244028,"percentRemaining":99,"baselineTokens":12000},"cacheMissInput":4222,"cacheHitRate":0.7028016331127692,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":4222,"cacheHitRate":0.7028016331127692,"components":{"uncachedInput":0.02111,"cachedInput":0.004992,"cacheWrite":0,"output":0.00498},"total":0.031082}},{"timestamp":"2026-08-11T08:38:35.775Z","usage":{"total":15582,"input":15498,"cached":14080,"cacheWrite":0,"output":84,"reasoning":33},"context":{"window":258400,"used":15582,"remaining":242818,"percentRemaining":99,"baselineTokens":12000},"cacheMissInput":1418,"cacheHitRate":0.9085043231384695,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1418,"cacheHitRate":0.9085043231384695,"components":{"uncachedInput":0.00709,"cachedInput":0.00704,"cacheWrite":0,"output":0.00252},"total":0.01665}},{"timestamp":"2026-08-11T08:38:41.325Z","usage":{"total":19504,"input":19394,"cached":15104,"cacheWrite":0,"output":110,"reasoning":25},"context":{"window":258400,"used":19504,"remaining":238896,"percentRemaining":97,"baselineTokens":12000},"cacheMissInput":4290,"cacheHitRate":0.7787975662576054,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":4290,"cacheHitRate":0.7787975662576054,"components":{"uncachedInput":0.02145,"cachedInput":0.007552,"cacheWrite":0,"output":0.0033},"total":0.032302}},{"timestamp":"2026-08-11T08:38:50.022Z","usage":{"total":21657,"input":21388,"cached":19200,"cacheWrite":0,"output":269,"reasoning":32},"context":{"window":258400,"used":21657,"remaining":236743,"percentRemaining":96,"baselineTokens":12000},"cacheMissInput":2188,"cacheHitRate":0.8976996446605573,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2188,"cacheHitRate":0.8976996446605573,"components":{"uncachedInput":0.01094,"cachedInput":0.0096,"cacheWrite":0,"output":0.00807},"total":0.02861}},{"timestamp":"2026-08-11T08:38:59.812Z","usage":{"total":21969,"input":21693,"cached":21248,"cacheWrite":0,"output":276,"reasoning":50},"context":{"window":258400,"used":21969,"remaining":236431,"percentRemaining":96,"baselineTokens":12000},"cacheMissInput":445,"cacheHitRate":0.9794864702899553,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":445,"cacheHitRate":0.9794864702899553,"components":{"uncachedInput":0.002225,"cachedInput":0.010624,"cacheWrite":0,"output":0.00828},"total":0.021129}},{"timestamp":"2026-08-11T08:39:07.460Z","usage":{"total":22251,"input":22005,"cached":5888,"cacheWrite":0,"output":246,"reasoning":13},"context":{"window":258400,"used":22251,"remaining":236149,"percentRemaining":96,"baselineTokens":12000},"cacheMissInput":16117,"cacheHitRate":0.26757555101113384,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":16117,"cacheHitRate":0.26757555101113384,"components":{"uncachedInput":0.080585,"cachedInput":0.002944,"cacheWrite":0,"output":0.00738},"total":0.090909}},{"timestamp":"2026-08-11T08:39:20.484Z","usage":{"total":32529,"input":32198,"cached":21248,"cacheWrite":0,"output":331,"reasoning":149},"context":{"window":258400,"used":32529,"remaining":225871,"percentRemaining":92,"baselineTokens":12000},"cacheMissInput":10950,"cacheHitRate":0.6599167650164607,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":10950,"cacheHitRate":0.6599167650164607,"components":{"uncachedInput":0.05475,"cachedInput":0.010624,"cacheWrite":0,"output":0.00993},"total":0.075304}}],"context":{"window":258400,"used":32529,"remaining":225871,"percentRemaining":92,"baselineTokens":12000},"compactionCount":0,"durationMs":61631,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.19815,"cachedInput":0.05337600000000001,"cacheWrite":0,"output":0.04446},"total":0.295986},"cacheMissInput":39630,"cacheHitRate":0.7292699922121573},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019feffa-a440-78d0-a2ec-18d4eed08f83","startedAt":"2026-08-11T08:40:08.517Z","completedAt":"2026-08-11T08:40:21.562Z","lastEventAt":"2026-08-11T08:40:21.547Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":32902,"input":32570,"cached":31488,"cacheWrite":0,"output":332,"reasoning":42},"requests":[{"timestamp":"2026-08-11T08:40:21.547Z","usage":{"total":32902,"input":32570,"cached":31488,"cacheWrite":0,"output":332,"reasoning":42},"context":{"window":258400,"used":32902,"remaining":225498,"percentRemaining":92,"baselineTokens":12000},"cacheMissInput":1082,"cacheHitRate":0.9667792447037151,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1082,"cacheHitRate":0.9667792447037151,"components":{"uncachedInput":0.00541,"cachedInput":0.015744,"cacheWrite":0,"output":0.00996},"total":0.031114}}],"context":{"window":258400,"used":32902,"remaining":225498,"percentRemaining":92,"baselineTokens":12000},"compactionCount":0,"durationMs":13045,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.00541,"cachedInput":0.015744,"cacheWrite":0,"output":0.00996},"total":0.031114},"cacheMissInput":1082,"cacheHitRate":0.9667792447037151},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019feffb-31a5-7e43-9beb-f2cdd36ab752","startedAt":"2026-08-11T08:40:44.714Z","completedAt":"2026-08-11T08:41:01.894Z","lastEventAt":"2026-08-11T08:41:01.878Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":66450,"input":66075,"cached":64000,"cacheWrite":0,"output":375,"reasoning":161},"requests":[{"timestamp":"2026-08-11T08:40:52.349Z","usage":{"total":33014,"input":32913,"cached":31488,"cacheWrite":0,"output":101,"reasoning":16},"context":{"window":258400,"used":33014,"remaining":225386,"percentRemaining":91,"baselineTokens":12000},"cacheMissInput":1425,"cacheHitRate":0.9567040379181478,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1425,"cacheHitRate":0.9567040379181478,"components":{"uncachedInput":0.007125,"cachedInput":0.015744,"cacheWrite":0,"output":0.00303},"total":0.025899000000000002}},{"timestamp":"2026-08-11T08:41:01.878Z","usage":{"total":33436,"input":33162,"cached":32512,"cacheWrite":0,"output":274,"reasoning":145},"context":{"window":258400,"used":33436,"remaining":224964,"percentRemaining":91,"baselineTokens":12000},"cacheMissInput":650,"cacheHitRate":0.9803992521560823,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":650,"cacheHitRate":0.9803992521560823,"components":{"uncachedInput":0.00325,"cachedInput":0.016256,"cacheWrite":0,"output":0.00822},"total":0.027726}}],"context":{"window":258400,"used":33436,"remaining":224964,"percentRemaining":91,"baselineTokens":12000},"compactionCount":0,"durationMs":17180,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.010375,"cachedInput":0.032,"cacheWrite":0,"output":0.01125},"total":0.053625000000000006},"cacheMissInput":2075,"cacheHitRate":0.9685962920923193},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019feffb-d99f-7283-9168-818ab38663f6","startedAt":"2026-08-11T08:41:27.716Z","completedAt":"2026-08-11T08:42:05.979Z","lastEventAt":"2026-08-11T08:42:05.961Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":182668,"input":181473,"cached":160768,"cacheWrite":0,"output":1195,"reasoning":491},"requests":[{"timestamp":"2026-08-11T08:41:35.282Z","usage":{"total":34184,"input":33940,"cached":32512,"cacheWrite":0,"output":244,"reasoning":65},"context":{"window":258400,"used":34184,"remaining":224216,"percentRemaining":91,"baselineTokens":12000},"cacheMissInput":1428,"cacheHitRate":0.9579257513258692,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1428,"cacheHitRate":0.9579257513258692,"components":{"uncachedInput":0.00714,"cachedInput":0.016256,"cacheWrite":0,"output":0.00732},"total":0.030716}},{"timestamp":"2026-08-11T08:41:41.374Z","usage":{"total":47015,"input":46876,"cached":33536,"cacheWrite":0,"output":139,"reasoning":14},"context":{"window":258400,"used":47015,"remaining":211385,"percentRemaining":86,"baselineTokens":12000},"cacheMissInput":13340,"cacheHitRate":0.7154194043860398,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":13340,"cacheHitRate":0.7154194043860398,"components":{"uncachedInput":0.0667,"cachedInput":0.016768,"cacheWrite":0,"output":0.00417},"total":0.087638}},{"timestamp":"2026-08-11T08:41:52.221Z","usage":{"total":49810,"input":49460,"cached":45824,"cacheWrite":0,"output":350,"reasoning":251},"context":{"window":258400,"used":49810,"remaining":208590,"percentRemaining":85,"baselineTokens":12000},"cacheMissInput":3636,"cacheHitRate":0.9264860493327942,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":3636,"cacheHitRate":0.9264860493327942,"components":{"uncachedInput":0.01818,"cachedInput":0.022912,"cacheWrite":0,"output":0.0105},"total":0.051592000000000006}},{"timestamp":"2026-08-11T08:42:05.961Z","usage":{"total":51659,"input":51197,"cached":48896,"cacheWrite":0,"output":462,"reasoning":161},"context":{"window":258400,"used":51659,"remaining":206741,"percentRemaining":84,"baselineTokens":12000},"cacheMissInput":2301,"cacheHitRate":0.9550559603101745,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2301,"cacheHitRate":0.9550559603101745,"components":{"uncachedInput":0.011505,"cachedInput":0.024448,"cacheWrite":0,"output":0.01386},"total":0.049812999999999996}}],"context":{"window":258400,"used":51659,"remaining":206741,"percentRemaining":84,"baselineTokens":12000},"compactionCount":0,"durationMs":38263,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.10352499999999999,"cachedInput":0.080384,"cacheWrite":0,"output":0.03585000000000001},"total":0.21975899999999998},"cacheMissInput":20705,"cacheHitRate":0.885905892336601},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019feffc-a86e-7801-88f0-87a8305be18e","startedAt":"2026-08-11T08:42:20.659Z","completedAt":"2026-08-11T08:43:31.799Z","lastEventAt":"2026-08-11T08:43:31.778Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":396612,"input":394262,"cached":379136,"cacheWrite":0,"output":2350,"reasoning":553},"requests":[{"timestamp":"2026-08-11T08:42:27.212Z","usage":{"total":51890,"input":51671,"cached":50944,"cacheWrite":0,"output":219,"reasoning":20},"context":{"window":258400,"used":51890,"remaining":206510,"percentRemaining":84,"baselineTokens":12000},"cacheMissInput":727,"cacheHitRate":0.9859302123047744,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":727,"cacheHitRate":0.9859302123047744,"components":{"uncachedInput":0.003635,"cachedInput":0.025472,"cacheWrite":0,"output":0.00657},"total":0.035677}},{"timestamp":"2026-08-11T08:42:33.232Z","usage":{"total":52353,"input":52217,"cached":50944,"cacheWrite":0,"output":136,"reasoning":13},"context":{"window":258400,"used":52353,"remaining":206047,"percentRemaining":84,"baselineTokens":12000},"cacheMissInput":1273,"cacheHitRate":0.9756209663519544,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1273,"cacheHitRate":0.9756209663519544,"components":{"uncachedInput":0.006365,"cachedInput":0.025472,"cacheWrite":0,"output":0.00408},"total":0.035917000000000004}},{"timestamp":"2026-08-11T08:42:57.391Z","usage":{"total":56872,"input":55658,"cached":51968,"cacheWrite":0,"output":1214,"reasoning":239},"context":{"window":258400,"used":56872,"remaining":201528,"percentRemaining":82,"baselineTokens":12000},"cacheMissInput":3690,"cacheHitRate":0.9337022530453843,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":3690,"cacheHitRate":0.9337022530453843,"components":{"uncachedInput":0.01845,"cachedInput":0.025984,"cacheWrite":0,"output":0.03642},"total":0.08085400000000001}},{"timestamp":"2026-08-11T08:43:02.105Z","usage":{"total":56975,"input":56896,"cached":55040,"cacheWrite":0,"output":79,"reasoning":9},"context":{"window":258400,"used":56975,"remaining":201425,"percentRemaining":82,"baselineTokens":12000},"cacheMissInput":1856,"cacheHitRate":0.9673790776152981,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1856,"cacheHitRate":0.9673790776152981,"components":{"uncachedInput":0.00928,"cachedInput":0.02752,"cacheWrite":0,"output":0.00237},"total":0.039169999999999996}},{"timestamp":"2026-08-11T08:43:08.906Z","usage":{"total":57862,"input":57740,"cached":56064,"cacheWrite":0,"output":122,"reasoning":20},"context":{"window":258400,"used":57862,"remaining":200538,"percentRemaining":81,"baselineTokens":12000},"cacheMissInput":1676,"cacheHitRate":0.970973328714929,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1676,"cacheHitRate":0.970973328714929,"components":{"uncachedInput":0.00838,"cachedInput":0.028032,"cacheWrite":0,"output":0.00366},"total":0.040071999999999997}},{"timestamp":"2026-08-11T08:43:23.270Z","usage":{"total":58297,"input":58030,"cached":57088,"cacheWrite":0,"output":267,"reasoning":208},"context":{"window":258400,"used":58297,"remaining":200103,"percentRemaining":81,"baselineTokens":12000},"cacheMissInput":942,"cacheHitRate":0.9837670170601414,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":942,"cacheHitRate":0.9837670170601414,"components":{"uncachedInput":0.00471,"cachedInput":0.028544,"cacheWrite":0,"output":0.00801},"total":0.041263999999999995}},{"timestamp":"2026-08-11T08:43:31.778Z","usage":{"total":62363,"input":62050,"cached":57088,"cacheWrite":0,"output":313,"reasoning":44},"context":{"window":258400,"used":62363,"remaining":196037,"percentRemaining":80,"baselineTokens":12000},"cacheMissInput":4962,"cacheHitRate":0.9200322320709106,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":4962,"cacheHitRate":0.9200322320709106,"components":{"uncachedInput":0.02481,"cachedInput":0.028544,"cacheWrite":0,"output":0.00939},"total":0.062744}}],"context":{"window":258400,"used":62363,"remaining":196037,"percentRemaining":80,"baselineTokens":12000},"compactionCount":0,"durationMs":71140,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.07563,"cachedInput":0.18956800000000001,"cacheWrite":0,"output":0.0705},"total":0.33569800000000005},"cacheMissInput":15126,"cacheHitRate":0.9616346490404858},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019ff002-f856-7aa3-ad54-9b896b14457e","startedAt":"2026-08-11T08:49:14.332Z","completedAt":"2026-08-11T08:49:47.618Z","lastEventAt":"2026-08-11T08:49:47.602Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":65389,"input":63965,"cached":61184,"cacheWrite":0,"output":1424,"reasoning":419},"requests":[{"timestamp":"2026-08-11T08:49:47.602Z","usage":{"total":65389,"input":63965,"cached":61184,"cacheWrite":0,"output":1424,"reasoning":419},"context":{"window":258400,"used":65389,"remaining":193011,"percentRemaining":78,"baselineTokens":12000},"cacheMissInput":2781,"cacheHitRate":0.9565230985695302,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2781,"cacheHitRate":0.9565230985695302,"components":{"uncachedInput":0.013905,"cachedInput":0.030592,"cacheWrite":0,"output":0.04272},"total":0.087217}}],"context":{"window":258400,"used":65389,"remaining":193011,"percentRemaining":78,"baselineTokens":12000},"compactionCount":0,"durationMs":33285,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.013905,"cachedInput":0.030592,"cacheWrite":0,"output":0.04272},"total":0.087217},"cacheMissInput":2781,"cacheHitRate":0.9565230985695302},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019ff004-1681-7db0-8540-45e8193a9366","startedAt":"2026-08-11T08:50:27.589Z","completedAt":"2026-08-11T08:51:12.661Z","lastEventAt":"2026-08-11T08:51:12.645Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":275393,"input":274012,"cached":265216,"cacheWrite":0,"output":1381,"reasoning":489},"requests":[{"timestamp":"2026-08-11T08:50:38.837Z","usage":{"total":65725,"input":65431,"cached":63232,"cacheWrite":0,"output":294,"reasoning":127},"context":{"window":258400,"used":65725,"remaining":192675,"percentRemaining":78,"baselineTokens":12000},"cacheMissInput":2199,"cacheHitRate":0.9663920771499748,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2199,"cacheHitRate":0.9663920771499748,"components":{"uncachedInput":0.010995,"cachedInput":0.031616,"cacheWrite":0,"output":0.00882},"total":0.051431}},{"timestamp":"2026-08-11T08:50:45.393Z","usage":{"total":66925,"input":66851,"cached":65280,"cacheWrite":0,"output":74,"reasoning":21},"context":{"window":258400,"used":66925,"remaining":191475,"percentRemaining":78,"baselineTokens":12000},"cacheMissInput":1571,"cacheHitRate":0.976499977562041,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1571,"cacheHitRate":0.976499977562041,"components":{"uncachedInput":0.007855,"cachedInput":0.03264,"cacheWrite":0,"output":0.00222},"total":0.042715}},{"timestamp":"2026-08-11T08:50:53.275Z","usage":{"total":70913,"input":70794,"cached":66304,"cacheWrite":0,"output":119,"reasoning":25},"context":{"window":258400,"used":70913,"remaining":187487,"percentRemaining":76,"baselineTokens":12000},"cacheMissInput":4490,"cacheHitRate":0.9365765460349748,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":4490,"cacheHitRate":0.9365765460349748,"components":{"uncachedInput":0.02245,"cachedInput":0.033152,"cacheWrite":0,"output":0.00357},"total":0.059171999999999995}},{"timestamp":"2026-08-11T08:51:12.645Z","usage":{"total":71830,"input":70936,"cached":70400,"cacheWrite":0,"output":894,"reasoning":316},"context":{"window":258400,"used":71830,"remaining":186570,"percentRemaining":76,"baselineTokens":12000},"cacheMissInput":536,"cacheHitRate":0.9924438930867261,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":536,"cacheHitRate":0.9924438930867261,"components":{"uncachedInput":0.00268,"cachedInput":0.0352,"cacheWrite":0,"output":0.02682},"total":0.06470000000000001}}],"context":{"window":258400,"used":71830,"remaining":186570,"percentRemaining":76,"baselineTokens":12000},"compactionCount":0,"durationMs":45072,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.043980000000000005,"cachedInput":0.132608,"cacheWrite":0,"output":0.04143},"total":0.21801800000000002},"cacheMissInput":8796,"cacheHitRate":0.9678992160927259},{"sessionId":"019feff8-3f73-7b40-a68d-36b4179b6d58","turnId":"019ff005-7352-7aa2-87a4-3443edf09aa1","startedAt":"2026-08-11T08:51:56.886Z","completedAt":"2026-08-11T08:52:43.334Z","lastEventAt":"2026-08-11T08:52:43.312Z","status":"completed","model":"gpt-5.6-sol","project":"/home/codex","channel":"CLI","usage":{"total":465159,"input":463830,"cached":448000,"cacheWrite":0,"output":1329,"reasoning":285},"requests":[{"timestamp":"2026-08-11T08:52:06.960Z","usage":{"total":72411,"input":72125,"cached":70400,"cacheWrite":0,"output":286,"reasoning":141},"context":{"window":258400,"used":72411,"remaining":185989,"percentRemaining":75,"baselineTokens":12000},"cacheMissInput":1725,"cacheHitRate":0.9760831889081456,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1725,"cacheHitRate":0.9760831889081456,"components":{"uncachedInput":0.008625,"cachedInput":0.0352,"cacheWrite":0,"output":0.00858},"total":0.05240500000000001}},{"timestamp":"2026-08-11T08:52:12.933Z","usage":{"total":73596,"input":73537,"cached":71424,"cacheWrite":0,"output":59,"reasoning":7},"context":{"window":258400,"used":73596,"remaining":184804,"percentRemaining":75,"baselineTokens":12000},"cacheMissInput":2113,"cacheHitRate":0.9712661653317378,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2113,"cacheHitRate":0.9712661653317378,"components":{"uncachedInput":0.010565,"cachedInput":0.035712,"cacheWrite":0,"output":0.00177},"total":0.048047}},{"timestamp":"2026-08-11T08:52:18.257Z","usage":{"total":77598,"input":77471,"cached":72448,"cacheWrite":0,"output":127,"reasoning":19},"context":{"window":258400,"used":77598,"remaining":180802,"percentRemaining":73,"baselineTokens":12000},"cacheMissInput":5023,"cacheHitRate":0.9351628351254018,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":5023,"cacheHitRate":0.9351628351254018,"components":{"uncachedInput":0.025115,"cachedInput":0.036224,"cacheWrite":0,"output":0.00381},"total":0.065149}},{"timestamp":"2026-08-11T08:52:29.133Z","usage":{"total":79667,"input":79282,"cached":76544,"cacheWrite":0,"output":385,"reasoning":10},"context":{"window":258400,"used":79667,"remaining":178733,"percentRemaining":73,"baselineTokens":12000},"cacheMissInput":2738,"cacheHitRate":0.9654650488130976,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":2738,"cacheHitRate":0.9654650488130976,"components":{"uncachedInput":0.01369,"cachedInput":0.038272,"cacheWrite":0,"output":0.01155},"total":0.063512}},{"timestamp":"2026-08-11T08:52:34.002Z","usage":{"total":79802,"input":79691,"cached":78592,"cacheWrite":0,"output":111,"reasoning":30},"context":{"window":258400,"used":79802,"remaining":178598,"percentRemaining":72,"baselineTokens":12000},"cacheMissInput":1099,"cacheHitRate":0.9862092331630924,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":1099,"cacheHitRate":0.9862092331630924,"components":{"uncachedInput":0.005495,"cachedInput":0.039296,"cacheWrite":0,"output":0.00333},"total":0.048121}},{"timestamp":"2026-08-11T08:52:43.312Z","usage":{"total":82085,"input":81724,"cached":78592,"cacheWrite":0,"output":361,"reasoning":78},"context":{"window":258400,"used":82085,"remaining":176315,"percentRemaining":72,"baselineTokens":12000},"cacheMissInput":3132,"cacheHitRate":0.9616758846850374,"compacted":false,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContext":false,"uncachedInputTokens":3132,"cacheHitRate":0.9616758846850374,"components":{"uncachedInput":0.01566,"cachedInput":0.039296,"cacheWrite":0,"output":0.01083},"total":0.065786}}],"context":{"window":258400,"used":82085,"remaining":176315,"percentRemaining":72,"baselineTokens":12000},"compactionCount":0,"durationMs":46448,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.07915,"cachedInput":0.224,"cacheWrite":0,"output":0.03987},"total":0.34302000000000005},"cacheMissInput":15830,"cacheHitRate":0.9658711165728823}],"summary":{"turnCount":8,"completedTurnCount":8,"cost":{"available":true,"currency":"USD","kind":"api-equivalent","pricingVersion":"2026-08-11","longContextRequestCount":0,"components":{"uncachedInput":0.5301250000000001,"cachedInput":0.758272,"cacheWrite":0,"output":0.29603999999999997},"total":1.5844369999999999},"latestContext":{"window":258400,"used":82085,"remaining":176315,"percentRemaining":72,"baselineTokens":12000},"compactionCount":0}};
+window.__CODEX_USAGE_DEFAULT_SESSION_ID__ = "019feff8-3f73-7b40-a68d-36b4179b6d58";</script>
+<script type="module">
+const state = {
+  report: null,
+  metadata: null,
+  summary: null,
+  fingerprint: "",
+  preset: "all",
+  bucket: "day",
+  startDate: "",
+  endDate: "",
+  recentValue: "1个月",
+  sessionId: new URLSearchParams(globalThis.location?.search || "").get("sessionId")
+    || globalThis.__CODEX_USAGE_DEFAULT_SESSION_ID__
+    || "",
+  sessions: [],
+  turnData: null,
+  now: null,
+  autoRefreshTimer: null,
+  theme: "light",
+  projectQuery: "",
+  modelQuery: "",
+  projectsExpanded: false,
+  modelsExpanded: false,
+  datePickerField: "",
+  datePickerViews: {
+    start: null,
+    end: null,
+  },
+};
+
+const AUTO_REFRESH_INTERVAL_MS = 60_000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const THEME_STORAGE_KEY = "codexUsageTheme";
+const RANKED_LIST_LIMIT = 25;
+const formatter = new Intl.NumberFormat("en-US");
+const compactFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
+const tooltipRows = new WeakMap();
+const timelineBars = new WeakMap();
+
+const $ = (selector) => document.querySelector(selector);
+
+function preferredTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") {
+      return saved;
+    }
+  } catch {
+    // Ignore storage failures in restricted contexts.
+  }
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function updateThemeButtons() {
+  for (const button of document.querySelectorAll("[data-theme-option]")) {
+    button.classList.toggle("active", button.dataset.themeOption === state.theme);
+    button.setAttribute("aria-pressed", String(button.dataset.themeOption === state.theme));
+  }
+}
+
+function setTheme(theme, { persist = true } = {}) {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = state.theme;
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, state.theme);
+    } catch {
+      // Ignore storage failures in restricted contexts.
+    }
+  }
+  updateThemeButtons();
+  render();
+}
+
+function isStaticSnapshot() {
+  return Boolean(window.__CODEX_USAGE_REPORT__);
+}
+
+function usageValue(usage, field = "total") {
+  return usage?.[field] || 0;
+}
+
+function formatTokens(value) {
+  return formatter.format(Math.round(value || 0));
+}
+
+function formatCompact(value) {
+  return compactFormatter.format(Math.round(value || 0));
+}
+
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 4,
+  }).format(value || 0);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => {
+    const replacements = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return replacements[character];
+  });
+}
+
+// Normalize optional row labels before rendering or building accessible names.
+function usageRowName(row) {
+  return row?.name || row?.key || "未知";
+}
+
+// Keep keyboard/screen-reader labels aligned with the visual token value.
+function usageRowAriaLabel(row) {
+  return `${usageRowName(row)}：${formatTokens(usageValue(row?.total, "total"))} tokens`;
+}
+
+export function formatUsageTooltip(row) {
+  const total = row?.total || emptyUsage();
+  const details = [
+    ["总 tokens", usageValue(total, "total")],
+    ["输入", usageValue(total, "input")],
+    ["缓存输入", usageValue(total, "cached")],
+    ["输出", usageValue(total, "output")],
+    ["推理输出", usageValue(total, "reasoning")],
+    ["事件", row?.count || 0],
+    ["会话", row?.sessions || 0],
+  ];
+  const channels = row?.channels || [];
+  return `
+    <div class="usage-tooltip-title">${escapeHtml(row?.name || row?.key || "未知")}</div>
+    <div class="usage-tooltip-grid">
+      ${details
+        .map(
+          ([label, value]) => `
+            <span class="usage-tooltip-label">${label}</span>
+            <span class="usage-tooltip-value">${formatTokens(value)}</span>
+          `,
+        )
+        .join("")}
+    </div>
+    ${
+      channels.length
+        ? `
+          <div class="usage-tooltip-subtitle">渠道</div>
+          <div class="usage-tooltip-grid">
+            ${channels
+              .map(
+                (channel) => `
+                  <span class="usage-tooltip-label">${escapeHtml(channel.name)}</span>
+                  <span class="usage-tooltip-value">${formatTokens(usageValue(channel.total, "total"))}</span>
+                `,
+              )
+              .join("")}
+          </div>
+        `
+        : ""
+    }
+  `;
+}
+
+function usageTooltip() {
+  return $("#usageTooltip");
+}
+
+function hideUsageTooltip() {
+  const tooltip = usageTooltip();
+  if (tooltip) {
+    tooltip.hidden = true;
+  }
+}
+
+function positionUsageTooltip(anchor) {
+  const tooltip = usageTooltip();
+  if (!tooltip || tooltip.hidden) {
+    return;
+  }
+  const offset = 14;
+  const margin = 8;
+  const width = tooltip.offsetWidth;
+  const height = tooltip.offsetHeight;
+  const rect = anchor?.getBoundingClientRect?.();
+  const anchorX = Number.isFinite(anchor?.clientX) ? anchor.clientX : rect?.left || margin;
+  const anchorY = Number.isFinite(anchor?.clientY) ? anchor.clientY : rect?.bottom || margin;
+  let left = anchorX + offset;
+  let top = anchorY + offset;
+  if (left + width + margin > window.innerWidth) {
+    left = anchorX - width - offset;
+  }
+  if (top + height + margin > window.innerHeight) {
+    top = anchorY - height - offset;
+  }
+  tooltip.style.left = `${Math.max(margin, left)}px`;
+  tooltip.style.top = `${Math.max(margin, top)}px`;
+}
+
+function showUsageTooltip(row, anchor) {
+  const tooltip = usageTooltip();
+  if (!tooltip || !row) {
+    hideUsageTooltip();
+    return;
+  }
+  tooltip.innerHTML = formatUsageTooltip(row);
+  tooltip.hidden = false;
+  positionUsageTooltip(anchor);
+}
+
+function bindUsageRows(container, selector, rows) {
+  container.querySelectorAll(selector).forEach((element, index) => {
+    tooltipRows.set(element, rows[index]);
+  });
+}
+
+function getChannelColors(rows) {
+  const styles = getComputedStyle(document.documentElement);
+  const palette = [
+    styles.getPropertyValue("--blue").trim() || "#2364aa",
+    styles.getPropertyValue("--green").trim() || "#2f855a",
+    styles.getPropertyValue("--gold").trim() || "#b7791f",
+    styles.getPropertyValue("--red").trim() || "#c05621",
+    styles.getPropertyValue("--muted").trim() || "#607080",
+  ];
+  return new Map(rows.map((row, index) => [row.name, palette[index % palette.length]]));
+}
+
+export function timelineChannelSegments(row, channelRows = []) {
+  const rowChannels = new Map((row?.channels || []).map((channel) => [channel.name, channel]));
+  const ordered = [];
+  for (const channel of channelRows) {
+    const match = rowChannels.get(channel.name);
+    if (match) {
+      ordered.push(match);
+      rowChannels.delete(channel.name);
+    }
+  }
+  ordered.push(...rowChannels.values());
+  return ordered;
+}
+
+function dateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const datePickerWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
+
+function parseLocalDate(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function normalizeDateInput(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  const date = parseLocalDate(trimmed);
+  return date ? dateKey(date) : null;
+}
+
+function monthStart(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") {
+  const selectedDate = parseLocalDate(selectedValue);
+  const visibleMonth = monthStart(viewDate instanceof Date ? viewDate : new Date(viewDate));
+  const mondayOffset = (visibleMonth.getDay() + 6) % 7;
+  const firstCell = addDays(visibleMonth, -mondayOffset);
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(firstCell, index);
+    const value = dateKey(date);
+    return {
+      date: value,
+      day: date.getDate(),
+      inCurrentMonth: date.getMonth() === visibleMonth.getMonth(),
+      selected: selectedDate ? value === dateKey(selectedDate) : false,
+    };
+  });
+  return {
+    year: visibleMonth.getFullYear(),
+    month: visibleMonth.getMonth() + 1,
+    weekdays: datePickerWeekdays,
+    cells,
+  };
+}
+
+export function renderDatePickerHtml({ field = "start", viewDate = new Date(), selectedValue = "" } = {}) {
+  const model = datePickerMonthModel(viewDate, selectedValue);
+  const escapedField = escapeHtml(field);
+  return `
+    <div class="date-picker-heading">
+      <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="上个月">‹</button>
+      <div class="date-picker-title">${model.year}年${String(model.month).padStart(2, "0")}月</div>
+      <button class="date-picker-nav" type="button" data-date-picker-action="next" data-date-picker-field="${escapedField}" aria-label="下个月">›</button>
+    </div>
+    <div class="date-picker-grid">
+      ${model.weekdays.map((weekday) => `<div class="date-picker-weekday">${weekday}</div>`).join("")}
+      ${model.cells
+        .map((cell) => {
+          const classes = ["date-picker-day"];
+          if (!cell.inCurrentMonth) {
+            classes.push("outside-month");
+          }
+          if (cell.selected) {
+            classes.push("selected");
+          }
+          return `<button type="button" data-date="${cell.date}" data-date-picker-field="${escapedField}" class="${classes.join(" ")}">${cell.day}</button>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function hourKey(date) {
+  // Hour buckets use local wall-clock time to match the existing day/week/month grouping.
+  const hour = String(date.getHours()).padStart(2, "0");
+  return `${dateKey(date)} ${hour}:00`;
+}
+
+function hourBoundaryKey(date) {
+  // Range labels use hour boundaries, so a day ending at 23:59:59.999 displays as next-day 00:00.
+  return hourKey(date);
+}
+
+function dateTimeMinuteKey(date) {
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${dateKey(date)} ${hour}:${minute}`;
+}
+
+function asDate(value) {
+  if (!value) {
+    return null;
+  }
+  return value instanceof Date ? value : new Date(value);
+}
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfHour(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
+}
+
+function endOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function isSingleLocalDayRange(range = {}) {
+  // The hourly chart only fills 24 buckets when the selected range resolves to one local calendar day.
+  const start = asDate(range.start);
+  const end = asDate(range.end);
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+  return dateKey(start) === dateKey(end);
+}
+
+function daysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function subtractMonthsClamped(date, months) {
+  const target = new Date(date.getFullYear(), date.getMonth() - months, 1);
+  const day = Math.min(date.getDate(), daysInMonth(target.getFullYear(), target.getMonth()));
+  return new Date(
+    target.getFullYear(),
+    target.getMonth(),
+    day,
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  );
+}
+
+export function normalizeRecentValue(value) {
+  const normalized = String(value || "").trim().replace(/\s+/g, "");
+  if (/^[1-9]\d*$/.test(normalized)) {
+    return `${normalized}天`;
+  }
+  return normalized;
+}
+
+function parseRecentValue(value) {
+  const normalized = normalizeRecentValue(value);
+  if (normalized === "半年") {
+    return { months: 6 };
+  }
+  if (normalized === "一年") {
+    return { months: 12 };
+  }
+  const dayMatch = normalized.match(/^([1-9]\d*)天$/);
+  if (dayMatch) {
+    return { days: Number(dayMatch[1]) };
+  }
+  const weekMatch = normalized.match(/^([1-9]\d*)周$/);
+  if (weekMatch) {
+    return { days: Number(weekMatch[1]) * 7 };
+  }
+  const monthMatch = normalized.match(/^([1-9]\d*)个月$/);
+  if (monthMatch) {
+    return { months: Number(monthMatch[1]) };
+  }
+  const yearMatch = normalized.match(/^([1-9]\d*)年$/);
+  if (yearMatch) {
+    return { months: Number(yearMatch[1]) * 12 };
+  }
+  return null;
+}
+
+function recentDateRange(value, now) {
+  const parsed = parseRecentValue(value);
+  if (!parsed) {
+    return null;
+  }
+  if (parsed.days === 1) {
+    return {
+      start: new Date(now.getTime() - MS_PER_DAY),
+      end: now,
+      preset: "recent",
+      rolling: true,
+    };
+  }
+  const start = parsed.days
+    ? addDays(startOfDay(now), 1 - parsed.days)
+    : startOfDay(subtractMonthsClamped(now, parsed.months));
+  return {
+    start,
+    end: endOfDay(now),
+    preset: "recent",
+  };
+}
+
+function startOfWeek(date) {
+  const start = startOfDay(date);
+  const day = start.getDay() || 7;
+  start.setDate(start.getDate() - day + 1);
+  return start;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addHours(date, hours) {
+  const next = new Date(date);
+  next.setHours(next.getHours() + hours);
+  return next;
+}
+
+function bucketKey(timestamp, bucket) {
+  const date = new Date(timestamp);
+  if (bucket === "hour") {
+    return hourKey(date);
+  }
+  if (bucket === "month") {
+    return dateKey(date).slice(0, 7);
+  }
+  if (bucket === "week") {
+    return dateKey(startOfWeek(date));
+  }
+  return dateKey(date);
+}
+
+function getRange(events) {
+  const now = state.now ? new Date(state.now) : new Date();
+  if (state.preset === "today") {
+    return { start: startOfDay(now), end: endOfDay(now) };
+  }
+  if (state.preset === "week") {
+    return { start: startOfWeek(now), end: endOfDay(now) };
+  }
+  if (state.preset === "month") {
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(now) };
+  }
+  if (state.preset === "custom") {
+    return {
+      start: state.startDate ? new Date(`${state.startDate}T00:00:00`) : null,
+      end: state.endDate ? new Date(`${state.endDate}T23:59:59.999`) : null,
+    };
+  }
+  if (state.preset === "recent") {
+    const range = recentDateRange(state.recentValue, now);
+    if (range) {
+      return range;
+    }
+  }
+  const dates = events.map((event) => new Date(event.timestamp)).filter((date) => !Number.isNaN(date.getTime()));
+  return {
+    start: dates.length ? startOfDay(new Date(Math.min(...dates))) : null,
+    end: dates.length ? endOfDay(new Date(Math.max(...dates))) : null,
+  };
+}
+
+function addUsage(target, usage) {
+  for (const field of ["total", "input", "cached", "output", "reasoning"]) {
+    target[field] += usageValue(usage, field);
+  }
+  return target;
+}
+
+function emptyUsage() {
+  return { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
+}
+
+function groupEvents(events, keyFn, options = {}) {
+  const groups = new Map();
+  for (const event of events) {
+    const key = keyFn(event);
+    const group = groups.get(key) || {
+      key,
+      name: key,
+      count: 0,
+      sessions: new Set(),
+      total: emptyUsage(),
+      channelGroups: options.includeChannels ? new Map() : null,
+    };
+    group.count += 1;
+    group.sessions.add(event.sessionId);
+    addUsage(group.total, event.total);
+    if (group.channelGroups) {
+      const channelKey = event.channel || "Unknown";
+      const channel = group.channelGroups.get(channelKey) || {
+        key: channelKey,
+        name: channelKey,
+        count: 0,
+        sessions: new Set(),
+        total: emptyUsage(),
+      };
+      channel.count += 1;
+      channel.sessions.add(event.sessionId);
+      addUsage(channel.total, event.total);
+      group.channelGroups.set(channelKey, channel);
+    }
+    groups.set(key, group);
+  }
+  return [...groups.values()].map((group) => ({
+    key: group.key,
+    name: group.name,
+    count: group.count,
+    sessions: group.sessions.size,
+    total: group.total,
+    ...(group.channelGroups
+      ? {
+          channels: [...group.channelGroups.values()]
+            .map((channel) => ({
+              key: channel.key,
+              name: channel.name,
+              count: channel.count,
+              sessions: channel.sessions.size,
+              total: channel.total,
+            }))
+            .sort((a, b) => b.total.total - a.total.total),
+        }
+      : {}),
+  }));
+}
+
+function emptyTimelineRow(key) {
+  // Empty rows let single-day hourly charts show zero-use hours without special render code.
+  return {
+    key,
+    name: key,
+    count: 0,
+    sessions: 0,
+    total: emptyUsage(),
+    channels: [],
+  };
+}
+
+function completeHourlyTimeline(rows, range, bucket) {
+  // 最近范围按选定边界补齐小时；普通单日范围保留完整自然日补齐。
+  if (bucket !== "hour" || (!isSingleLocalDayRange(range) && range?.preset !== "recent")) {
+    return rows;
+  }
+  const rowsByKey = new Map(rows.map((row) => [row.key, row]));
+  const start = range?.preset === "recent" ? startOfHour(asDate(range.start)) : startOfDay(asDate(range.start));
+  const end = range?.preset === "recent" ? startOfHour(asDate(range.end)) : addHours(start, 23);
+  const hourCount = Math.max(0, Math.round((end.getTime() - start.getTime()) / MS_PER_HOUR) + 1);
+  return Array.from({ length: hourCount }, (_, hour) => {
+    const bucketStart = addHours(start, hour);
+    const key = hourKey(bucketStart);
+    return rowsByKey.get(key) || emptyTimelineRow(key);
+  });
+}
+
+function previousPeriodRange(range) {
+  if (!range.start || !range.end || state.preset === "all") {
+    return null;
+  }
+  if (state.preset === "today") {
+    const previousDay = addDays(startOfDay(asDate(range.start)), -1);
+    return {
+      start: previousDay,
+      end: endOfDay(previousDay),
+    };
+  }
+  if (state.preset === "week") {
+    const previousWeekStart = addDays(startOfWeek(asDate(range.start)), -7);
+    return {
+      start: previousWeekStart,
+      end: endOfDay(addDays(previousWeekStart, 6)),
+    };
+  }
+  if (state.preset === "month") {
+    const currentMonthStart = new Date(asDate(range.start).getFullYear(), asDate(range.start).getMonth(), 1);
+    return {
+      start: new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
+      end: endOfDay(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 0)),
+    };
+  }
+  const durationMs = range.end.getTime() - range.start.getTime() + 1;
+  return {
+    start: new Date(range.start.getTime() - durationMs),
+    end: new Date(range.start.getTime() - 1),
+  };
+}
+
+function rangeDurationMs(range) {
+  const start = asDate(range?.start);
+  const end = asDate(range?.end);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(0, end.getTime() - start.getTime() + 1);
+}
+
+function currentElapsedMs(range, now) {
+  const start = asDate(range?.start);
+  const end = asDate(range?.end);
+  if (!start || !end || Number.isNaN(now?.getTime())) {
+    return rangeDurationMs(range);
+  }
+  const boundedEnd = Math.min(end.getTime(), Math.max(start.getTime(), now.getTime()));
+  return Math.max(0, boundedEnd - start.getTime() + 1);
+}
+
+function averageTrend(currentTotals, previousTotals, range, previousRange, now) {
+  const previousDurationMs = rangeDurationMs(previousRange);
+  const elapsedMs = currentElapsedMs(range, now);
+  const averageBaselineTotal = previousDurationMs
+    ? Math.round((previousTotals.total * elapsedMs) / previousDurationMs)
+    : 0;
+  return {
+    averageBaselineTotal,
+    averageDelta: currentTotals.total - averageBaselineTotal,
+    averagePercentChange: percentChange(currentTotals.total, averageBaselineTotal),
+  };
+}
+
+function comparisonLabel() {
+  return {
+    today: "较昨日",
+    week: "较上周",
+    month: "较上月",
+    custom: "较上一等长周期",
+    recent: "较上一等长周期",
+  }[state.preset] || "暂无对比";
+}
+
+function percentChange(current, previous) {
+  if (!previous) {
+    return null;
+  }
+  return Math.round(((current - previous) / previous) * 10_000) / 100;
+}
+
+function summarizeComparison(allEvents, range, currentTotals) {
+  // 静态导出没有 API 可用，因此在浏览器端复用同一套趋势口径。
+  const previousRange = previousPeriodRange(range);
+  if (!previousRange) {
+    return {
+      label: comparisonLabel(),
+      previousRange: null,
+      previousTotals: emptyUsage(),
+      previousEventCount: 0,
+      previousSessionCount: 0,
+      totalDelta: currentTotals.total,
+      percentChange: null,
+      averageBaselineTotal: 0,
+      averageDelta: currentTotals.total,
+      averagePercentChange: null,
+    };
+  }
+  const previousEvents = allEvents.filter((event) => {
+    const time = Date.parse(event.timestamp);
+    return Number.isFinite(time) && time >= previousRange.start.getTime() && time <= previousRange.end.getTime();
+  });
+  const previousTotals = previousEvents.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
+  const now = state.now ? new Date(state.now) : new Date();
+  const average = averageTrend(currentTotals, previousTotals, range, previousRange, now);
+  return {
+    label: comparisonLabel(),
+    previousRange: {
+      start: previousRange.start.toISOString(),
+      end: previousRange.end.toISOString(),
+    },
+    previousTotals,
+    previousEventCount: previousEvents.length,
+    previousSessionCount: new Set(previousEvents.map((event) => event.sessionId)).size,
+    totalDelta: currentTotals.total - previousTotals.total,
+    percentChange: percentChange(currentTotals.total, previousTotals.total),
+    ...average,
+  };
+}
+
+export function summarize(report) {
+  const scopedEvents = state.sessionId
+    ? report.events.filter((event) => event.sessionId === state.sessionId)
+    : report.events;
+  const range = getRange(scopedEvents);
+  const events = scopedEvents.filter((event) => {
+    const date = new Date(event.timestamp);
+    if (Number.isNaN(date.getTime())) {
+      return false;
+    }
+    if (range.start && date < range.start) {
+      return false;
+    }
+    if (range.end && date > range.end) {
+      return false;
+    }
+    return true;
+  });
+  const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
+  const timeline = completeHourlyTimeline(
+    groupEvents(events, (event) => bucketKey(event.timestamp, state.bucket), { includeChannels: true }).sort((a, b) =>
+      a.key.localeCompare(b.key),
+    ),
+    range,
+    state.bucket,
+  );
+  const channels = groupEvents(events, (event) => event.channel).sort((a, b) => b.total.total - a.total.total);
+  const projects = groupEvents(events, (event) => event.cwd || "Unknown cwd").sort((a, b) => b.total.total - a.total.total);
+  const models = groupEvents(events, (event) => event.model || "Unknown model").sort((a, b) => b.total.total - a.total.total);
+  return {
+    range,
+    totals,
+    comparison: summarizeComparison(scopedEvents, range, totals),
+    timeline,
+    channels,
+    projects,
+    models,
+    sessionCount: new Set(events.map((event) => event.sessionId)).size,
+    eventCount: events.length,
+  };
+}
+
+export function setSummaryFilters(filters = {}) {
+  for (const key of ["preset", "bucket", "startDate", "endDate", "recentValue"]) {
+    if (Object.hasOwn(filters, key)) {
+      state[key] = filters[key] || "";
+    }
+  }
+  if (Object.hasOwn(filters, "now")) {
+    state.now = filters.now || null;
+  }
+}
+
+export function defaultBucketForRange(preset = "all", recentValue = "") {
+  // One-day views are hourly by default; broader ranges reset to daily charts.
+  return preset === "today" || (preset === "recent" && normalizeRecentValue(recentValue) === "1天") ? "hour" : "day";
+}
+
+export function nextPresetState(currentState = {}, preset = "all") {
+  // Preset switches intentionally reset granularity to the default for that range.
+  return {
+    preset,
+    bucket: defaultBucketForRange(preset, currentState.recentValue),
+  };
+}
+
+export function nextRecentState(currentState = {}, value = "") {
+  const recentValue = normalizeRecentValue(value);
+  // Recent range edits reset granularity based on whether the selected span is one day.
+  return {
+    preset: "recent",
+    recentValue,
+    bucket: defaultBucketForRange("recent", recentValue),
+  };
+}
+
+function setMetric(id, value) {
+  $(id).textContent = formatTokens(value);
+  $(id).title = formatTokens(value);
+}
+
+function renderMetrics(summary) {
+  setMetric("#totalTokens", summary.totals.total);
+  setMetric("#inputTokens", summary.totals.input);
+  setMetric("#cachedTokens", summary.totals.cached);
+  setMetric("#outputTokens", summary.totals.output);
+  setMetric("#reasoningTokens", summary.totals.reasoning);
+  setMetric("#sessionCount", summary.sessionCount);
+}
+
+export function rangeLabel(summary) {
+  const start = summary.range.start ? dateKey(asDate(summary.range.start)) : "开始";
+  const end = summary.range.end ? dateKey(asDate(summary.range.end)) : "现在";
+  const bucket = { hour: "按小时", day: "按天", week: "按周", month: "按月" }[state.bucket];
+  if (state.bucket === "hour" && summary.range.start && summary.range.end) {
+    const startDate = asDate(summary.range.start);
+    const endDate = asDate(summary.range.end);
+    if (summary.range.rolling) {
+      return `${dateTimeMinuteKey(startDate)} 至 ${dateTimeMinuteKey(endDate)} · ${bucket}`;
+    }
+    const exclusiveEnd = new Date(endDate.getTime() + 1);
+    return `${hourBoundaryKey(startDate)} 至 ${hourBoundaryKey(exclusiveEnd)} · ${bucket}`;
+  }
+  return `${start} 至 ${end} · ${bucket}`;
+}
+
+export function renderBarListHtml(rows, colorMap = null) {
+  // Build escaped HTML in one place so all bar-list render paths stay safe.
+  if (!rows.length) {
+    return `<div class="empty">没有匹配的用量记录</div>`;
+  }
+  const max = rows[0].total.total || 1;
+  return rows
+    .map((row) => {
+      const width = Math.max(2, (row.total.total / max) * 100);
+      const color = colorMap?.get(row.name);
+      const fillStyle = `width: ${width}%;${color ? ` background: ${color};` : ""}`;
+      const name = escapeHtml(usageRowName(row));
+      const ariaLabel = escapeHtml(usageRowAriaLabel(row));
+      return `
+        <div class="bar-row" data-usage-tooltip="true" tabindex="0" aria-label="${ariaLabel}">
+          <div class="bar-label">
+            <span class="bar-name" title="${name}">${name}</span>
+            <span class="bar-value">${formatTokens(row.total.total)}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="${fillStyle}"></div></div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderBarList(container, rows, colorMap = null) {
+  container.innerHTML = renderBarListHtml(rows, colorMap);
+  bindUsageRows(container, ".bar-row", rows);
+}
+
+export function renderCompactListHtml(rows) {
+  // Compact rows are focusable so keyboard users can reach the same tooltip details.
+  if (!rows.length) {
+    return `<div class="empty">没有匹配的用量记录</div>`;
+  }
+  return rows
+    .map(
+      (row) => {
+        const name = escapeHtml(usageRowName(row));
+        const ariaLabel = escapeHtml(usageRowAriaLabel(row));
+        return `
+        <div class="compact-row" data-usage-tooltip="true" tabindex="0" aria-label="${ariaLabel}">
+          <div class="compact-label">
+            <span class="compact-name" title="${name}">${name}</span>
+            <span class="compact-value">${formatTokens(row.total.total)}</span>
+          </div>
+        </div>
+      `;
+      },
+    )
+    .join("");
+}
+
+function renderCompactList(container, rows) {
+  container.innerHTML = renderCompactListHtml(rows);
+  bindUsageRows(container, ".compact-row", rows);
+}
+
+export function renderTimelineDetailsHtml(rows) {
+  // The timeline detail list mirrors the canvas for mobile and keyboard access.
+  if (!rows.length) {
+    return `<div class="empty">没有匹配的用量记录</div>`;
+  }
+  return rows
+    .map((row) => {
+      const name = escapeHtml(usageRowName(row));
+      const ariaLabel = escapeHtml(usageRowAriaLabel(row));
+      return `
+        <div class="timeline-detail-row" data-usage-tooltip="true" tabindex="0" aria-label="${ariaLabel}">
+          <span class="timeline-detail-name">${name}</span>
+          <span class="timeline-detail-value">${formatTokens(row.total.total)}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderTimelineDetails(container, rows) {
+  container.innerHTML = renderTimelineDetailsHtml(rows);
+  bindUsageRows(container, ".timeline-detail-row", rows);
+}
+
+function hourlyAxisLabel(key, singleDay) {
+  // Hourly labels stay compact so a 24-hour day can show every tick without long date text.
+  const match = String(key || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/);
+  if (!match) {
+    return String(key || "");
+  }
+  return singleDay ? match[4] : `${match[2]}-${match[3]} ${match[4]}`;
+}
+
+export function timelineAxisLabels(rows, options = {}) {
+  // Build label positions separately from drawing so hour sampling stays testable.
+  if (!rows.length) {
+    return [];
+  }
+  const singleHourlyDay = options.bucket === "hour" && isSingleLocalDayRange(options.range);
+  if (singleHourlyDay) {
+    return rows.map((row, index) => ({
+      index,
+      label: hourlyAxisLabel(row.key, true),
+    }));
+  }
+
+  const fallbackMaxLabels = Math.max(2, Math.floor((options.chartWidth || 960) / 120));
+  const maxLabels = Math.max(1, options.maxLabels || fallbackMaxLabels);
+  const labelCount = Math.min(rows.length, maxLabels);
+  return Array.from({ length: labelCount }, (_, position) => {
+    const index = Math.round((position * (rows.length - 1)) / Math.max(1, labelCount - 1));
+    const row = rows[index];
+    return {
+      index,
+      label: options.bucket === "hour" ? hourlyAxisLabel(row.key, false) : row.key,
+    };
+  });
+}
+
+export function filterRankedRows(rows, { query = "", expanded = false, limit = RANKED_LIST_LIMIT } = {}) {
+  // Search intentionally scans the full sorted list even when the default view is capped.
+  const normalized = String(query || "").trim().toLowerCase();
+  const filtered = normalized
+    ? rows.filter((row) => usageRowName(row).toLowerCase().includes(normalized))
+    : rows;
+  return normalized || expanded ? filtered : filtered.slice(0, limit);
+}
+
+function formatDelta(value) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${formatTokens(value)}`;
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined) {
+    return "无基准";
+  }
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value}%`;
+}
+
+function comparisonClass(value) {
+  return value > 0 ? "up" : value < 0 ? "down" : "flat";
+}
+
+export function renderComparisonHtml(comparison) {
+  if (!comparison) {
+    return "";
+  }
+  if (!comparison.previousRange) {
+    return `
+      <article class="comparison-item flat">
+        <span>趋势变化</span>
+        <strong>暂无对比</strong>
+        <small>选择今日、本周、本月或最近范围查看</small>
+      </article>
+    `;
+  }
+  return `
+    <article class="comparison-item ${comparisonClass(comparison.totalDelta)}">
+      <span>${escapeHtml(comparison.label)}</span>
+      <strong>${formatDelta(comparison.totalDelta)}</strong>
+      <small>${formatPercent(comparison.percentChange)}</small>
+    </article>
+    <article class="comparison-item ${comparisonClass(comparison.averageDelta)}">
+      <span>平均趋势变化</span>
+      <strong>${formatDelta(comparison.averageDelta)}</strong>
+      <small>${formatPercent(comparison.averagePercentChange)}</small>
+    </article>
+    <article class="comparison-item">
+      <span>上一周期 tokens</span>
+      <strong>${formatTokens(comparison.previousTotals.total)}</strong>
+      <small>${formatTokens(comparison.previousSessionCount)} 个会话</small>
+    </article>
+  `;
+}
+
+function renderComparison(summary) {
+  const container = $("#comparisonSummary");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = renderComparisonHtml(summary.comparison);
+}
+
+function updateRankedListControls(kind, rows) {
+  const query = kind === "project" ? state.projectQuery : state.modelQuery;
+  const expanded = kind === "project" ? state.projectsExpanded : state.modelsExpanded;
+  const button = $(`#${kind}Toggle`);
+  if (!button) {
+    return;
+  }
+  const hasQuery = Boolean(String(query || "").trim());
+  button.hidden = hasQuery || rows.length <= RANKED_LIST_LIMIT;
+  button.textContent = expanded ? "收起" : "展开";
+  button.setAttribute("aria-expanded", String(expanded));
+}
+
+export function drawTimeline(canvas, rows, channelRows = [], channelColors = new Map(), range = null) {
+  const context = canvas.getContext("2d");
+  canvas.dataset.usageTooltip = "true";
+  timelineBars.set(canvas, []);
+  const ratio = window.devicePixelRatio || 1;
+  const styles = getComputedStyle(document.documentElement);
+  const chartLine = styles.getPropertyValue("--chart-line").trim() || "#d9e0e6";
+  const chartText = styles.getPropertyValue("--chart-text").trim() || "#607080";
+  const blue = styles.getPropertyValue("--blue").trim() || "#2364aa";
+  const green = styles.getPropertyValue("--green").trim() || "#2f855a";
+  const width = canvas.clientWidth * ratio;
+  const height = canvas.clientHeight * ratio;
+  canvas.width = width;
+  canvas.height = height;
+  context.clearRect(0, 0, width, height);
+  context.scale(ratio, ratio);
+
+  const cssWidth = canvas.clientWidth;
+  const cssHeight = canvas.clientHeight;
+  const padding = { top: 18, right: 18, bottom: 42, left: 58 };
+  const chartWidth = cssWidth - padding.left - padding.right;
+  const chartHeight = cssHeight - padding.top - padding.bottom;
+
+  context.strokeStyle = chartLine;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(padding.left, padding.top);
+  context.lineTo(padding.left, padding.top + chartHeight);
+  context.lineTo(padding.left + chartWidth, padding.top + chartHeight);
+  context.stroke();
+
+  if (!rows.length) {
+    context.fillStyle = chartText;
+    context.font = "13px system-ui";
+    context.fillText("没有匹配的用量记录", padding.left + 12, padding.top + 28);
+    return;
+  }
+
+  const max = Math.max(...rows.map((row) => row.total.total), 1);
+  const slotWidth = chartWidth / Math.max(rows.length, 1);
+  const gap = Math.min(10, slotWidth * 0.18);
+  const barWidth = Math.max(0.5, slotWidth - gap);
+  const bars = [];
+
+  rows.forEach((row, index) => {
+    const value = row.total.total;
+    const barHeight = value ? Math.max(2, (value / max) * chartHeight) : 0;
+    const slotX = padding.left + index * slotWidth;
+    const x = slotX + Math.max(0, (slotWidth - barWidth) / 2);
+    const segments = timelineChannelSegments(row, channelRows);
+    let y = padding.top + chartHeight;
+    if (value && !segments.length) {
+      context.fillStyle = blue;
+      context.fillRect(x, y - barHeight, barWidth, barHeight);
+    }
+    for (const segment of segments) {
+      const segmentValue = usageValue(segment.total, "total");
+      if (!segmentValue) {
+        continue;
+      }
+      const segmentHeight = (segmentValue / value) * barHeight;
+      y -= segmentHeight;
+      context.fillStyle = channelColors.get(segment.name) || green;
+      context.fillRect(x, y, barWidth, Math.max(0.5, segmentHeight));
+    }
+    bars.push({
+      x: slotX,
+      y: padding.top,
+      width: slotWidth,
+      height: chartHeight,
+      row,
+    });
+  });
+  timelineBars.set(canvas, bars);
+
+  context.fillStyle = chartText;
+  context.font = "12px system-ui";
+  context.fillText(formatCompact(max), 8, padding.top + 8);
+  context.fillText("0", 34, padding.top + chartHeight);
+
+  const labels = timelineAxisLabels(rows, { bucket: state.bucket, range, chartWidth });
+  for (const label of labels) {
+    const index = label.index;
+    const x = padding.left + index * slotWidth;
+    context.save();
+    context.translate(x, padding.top + chartHeight + 18);
+    context.rotate(-Math.PI / 8);
+    context.fillText(label.label, 0, 0);
+    context.restore();
+  }
+}
+
+function timelineRowAt(canvas, event) {
+  const bars = timelineBars.get(canvas) || [];
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const hit = bars.find((bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height);
+  return hit?.row || null;
+}
+
+function setupUsageTooltip() {
+  const timelineChart = $("#timelineChart");
+  timelineChart.addEventListener("pointermove", (event) => {
+    const row = timelineRowAt(timelineChart, event);
+    if (row) {
+      showUsageTooltip(row, event);
+      return;
+    }
+    hideUsageTooltip();
+  });
+  timelineChart.addEventListener("pointerleave", hideUsageTooltip);
+
+  document.addEventListener("pointermove", (event) => {
+    if (event.target === timelineChart) {
+      return;
+    }
+    const target = event.target.closest?.("[data-usage-tooltip]");
+    if (!target) {
+      hideUsageTooltip();
+      return;
+    }
+    showUsageTooltip(tooltipRows.get(target), event);
+  });
+  document.addEventListener("pointerleave", hideUsageTooltip);
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest?.("[data-usage-tooltip]");
+    if (!target) {
+      return;
+    }
+    showUsageTooltip(tooltipRows.get(target), target);
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target.closest?.("[data-usage-tooltip]")) {
+      hideUsageTooltip();
+    }
+  });
+}
+
+function homeStatusLabel(home) {
+  // Convert machine-friendly scan states into compact dashboard labels.
+  if (home.type === "unsupported" || home.status === "unsupported") {
+    return "不可用";
+  }
+  if (home.status === "active" && home.eventCount > 0) {
+    return "有用量记录";
+  }
+  if (home.status === "no-events") {
+    return "无用量记录";
+  }
+  return "可扫描";
+}
+
+function homeRowsFromMetadata(metadata) {
+  // Preserve unsupported stored imports so users can remove or fix them.
+  const homes = [...(metadata.homes || [])];
+  const seen = new Set(homes.map((home) => home.path));
+  for (const entry of metadata.imports || []) {
+    if (seen.has(entry.path)) {
+      continue;
+    }
+    homes.push({
+      ...entry,
+      label: entry.label || entry.path,
+      kind: entry.type,
+      imported: true,
+      status: entry.type === "unsupported" ? "unsupported" : "active",
+      eventCount: 0,
+      sessionCount: 0,
+    });
+  }
+  return homes;
+}
+
+export function renderHomesHtml(homes, { canModify = false } = {}) {
+  // Render paths and labels as escaped text because they may come from imported logs.
+  if (!homes.length) {
+    return `<div class="empty">没有发现 Codex 目录</div>`;
+  }
+  return homes
+    .map((home) => {
+      const label = escapeHtml(home.label);
+      const kind = escapeHtml(home.kind || home.type || "");
+      const status = escapeHtml(homeStatusLabel(home));
+      const pathText = escapeHtml(home.path);
+      const reason = home.reason ? `<div class="home-reason">${escapeHtml(home.reason)}</div>` : "";
+      const counts = `${formatTokens(home.eventCount || 0)} 条事件 · ${formatTokens(home.sessionCount || 0)} 个会话`;
+      const removeButton =
+        canModify && home.imported
+          ? `<button class="home-remove" type="button" data-import-action="remove" data-import-path="${pathText}" aria-label="移除 ${label}">移除</button>`
+          : "";
+      return `
+        <div class="home-row">
+          <div class="home-label">
+            <strong>${label}</strong>
+            <span class="home-kind">${kind}</span>
+          </div>
+          <div class="home-meta">
+            <span class="home-status">${status}</span>
+            <span>${counts}</span>
+            ${removeButton}
+          </div>
+          <div class="home-path" title="${pathText}">${pathText}</div>
+          ${reason}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderHomes(homes, options = {}) {
+  const container = $("#homeList");
+  container.innerHTML = renderHomesHtml(homes, options);
+}
+
+function metadataFromReport(report) {
+  const homeStats = new Map();
+  for (const event of report.events) {
+    const current = homeStats.get(event.homeId) || {
+      eventCount: 0,
+      sessions: new Set(),
+    };
+    current.eventCount += 1;
+    current.sessions.add(event.sessionId);
+    homeStats.set(event.homeId, current);
+  }
+  return {
+    generatedAt: report.generatedAt,
+    eventCount: report.events.length,
+    sessionCount: report.sessions.length,
+    homes: report.homes.map((home) => {
+      const stats = homeStats.get(home.id) || { eventCount: 0, sessions: new Set() };
+      return {
+        ...home,
+        status: stats.eventCount > 0 ? "active" : "no-events",
+        eventCount: stats.eventCount,
+        sessionCount: stats.sessions.size,
+      };
+    }),
+    warnings: report.warnings || [],
+  };
+}
+
+function currentSummary() {
+  if (state.report) {
+    return summarize(state.report);
+  }
+  return state.summary;
+}
+
+function currentMetadata() {
+  if (state.report) {
+    return metadataFromReport(state.report);
+  }
+  return state.metadata;
+}
+
+function renderSessionInsights() {
+  const data = state.turnData;
+  const insights = $("#sessionInsights");
+  const panel = $("#turnPanel");
+  if (!state.sessionId || !data) {
+    insights.hidden = true;
+    panel.hidden = true;
+    return;
+  }
+  insights.hidden = false;
+  panel.hidden = false;
+  const cost = data.summary.cost;
+  $("#sessionCost").textContent = cost.available ? formatUsd(cost.total) : "暂无定价";
+  $("#sessionCostBreakdown").textContent = cost.available
+    ? `普通输入 ${formatUsd(cost.components.uncachedInput)} · 缓存 ${formatUsd(cost.components.cachedInput)} · 输出 ${formatUsd(cost.components.output)}`
+    : "当前模型没有价格配置";
+  const context = data.summary.latestContext;
+  if (context) {
+    $("#contextRemaining").textContent = `${formatTokens(context.remaining)} tokens`;
+    $("#contextBar").style.width = `${context.percentRemaining}%`;
+    $("#contextBar").style.background = context.percentRemaining < 15 ? "#d14" : "var(--green)";
+    $("#contextDetails").textContent = `${context.percentRemaining}% 剩余 · 已用 ${formatTokens(context.used)} / ${formatTokens(context.window)} · 压缩 ${data.summary.compactionCount} 次`;
+  } else {
+    $("#contextRemaining").textContent = "暂无数据";
+    $("#contextDetails").textContent = "等待下一个 token_count 事件";
+  }
+  const totals = data.turns.reduce((sum, turn) => {
+    sum.input += turn.usage.input;
+    sum.cached += turn.usage.cached;
+    sum.miss += turn.cacheMissInput;
+    return sum;
+  }, { input: 0, cached: 0, miss: 0 });
+  const hitRate = totals.input > 0 ? totals.cached / totals.input : 0;
+  $("#cacheHitRate").textContent = `${(hitRate * 100).toFixed(1)}%`;
+  $("#cacheDetails").textContent = `缓存输入 ${formatTokens(totals.cached)} · 缓存外输入 ${formatTokens(totals.miss)}`;
+  $("#turnSummary").textContent = `${data.summary.completedTurnCount}/${data.summary.turnCount} 已完成`;
+  $("#turnRows").innerHTML = [...data.turns].reverse().map((turn) => {
+    const contextText = turn.context ? `${turn.context.percentRemaining}% (${formatCompact(turn.context.remaining)})` : "-";
+    return `<tr title="${escapeHtml(turn.turnId)}">
+      <td>${escapeHtml(new Date(turn.completedAt || turn.startedAt).toLocaleString())}</td>
+      <td>${escapeHtml(`${turn.turnId.slice(0, 8)}…`)}</td>
+      <td>${formatTokens(turn.usage.input)}</td><td>${formatTokens(turn.usage.cached)}</td>
+      <td>${formatTokens(turn.cacheMissInput)}</td><td>${formatTokens(turn.usage.output)}</td>
+      <td>${contextText}</td><td>${turn.cost.available ? formatUsd(turn.cost.total) : "-"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function render() {
+  const summary = currentSummary();
+  const metadata = currentMetadata();
+  if (!summary || !metadata) {
+    return;
+  }
+  hideUsageTooltip();
+  renderMetrics(summary);
+  renderSessionInsights();
+  renderComparison(summary);
+  $("#rangeLabel").textContent = rangeLabel(summary);
+  const channelColors = getChannelColors(summary.channels);
+  const projectRows = filterRankedRows(summary.projects, {
+    query: state.projectQuery,
+    expanded: state.projectsExpanded,
+  });
+  const modelRows = filterRankedRows(summary.models, {
+    query: state.modelQuery,
+    expanded: state.modelsExpanded,
+  });
+  renderBarList($("#channelList"), summary.channels, channelColors);
+  renderCompactList($("#projectList"), projectRows);
+  renderCompactList($("#modelList"), modelRows);
+  updateRankedListControls("project", summary.projects);
+  updateRankedListControls("model", summary.models);
+  renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot() });
+  drawTimeline($("#timelineChart"), summary.timeline, summary.channels, channelColors, summary.range);
+  renderTimelineDetails($("#timelineDetails"), summary.timeline);
+}
+
+function clockTime(date = new Date()) {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function setAutoRefreshStatus(message) {
+  $("#autoRefreshStatus").textContent = message;
+}
+
+function setImportControlsDisabled(disabled) {
+  for (const selector of ["#importButton", "#addImportButton", "#pickImportDirectoryButton"]) {
+    const button = $(selector);
+    if (!button) {
+      continue;
+    }
+    button.disabled = disabled;
+    button.title = disabled ? "静态快照不能导入目录" : "";
+  }
+}
+
+async function pickImportDirectory() {
+  if (isStaticSnapshot()) {
+    setImportMessage("静态快照不能选择目录，请启动本地服务或手动输入路径。", true);
+    return;
+  }
+
+  const pickButton = $("#pickImportDirectoryButton");
+  pickButton.disabled = true;
+  setImportMessage("正在打开文件夹选择器...");
+  try {
+    const response = await fetch("/api/pick-directory", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || `API ${response.status}`);
+    }
+    if (data.path) {
+      $("#importPath").value = data.path;
+      setImportMessage("已选择目录，可继续导入。");
+    } else {
+      setImportMessage("没有选择目录。");
+    }
+  } catch (error) {
+    setImportMessage(`选择失败：${error.message}，也可以手动输入路径。`, true);
+  } finally {
+    pickButton.disabled = false;
+  }
+}
+
+function setImportMessage(message, isError = false) {
+  const element = $("#importMessage");
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+}
+
+function openImportDialog() {
+  if (isStaticSnapshot()) {
+    setAutoRefreshStatus("静态快照不能导入目录，请启动本地服务后再导入");
+    return;
+  }
+  const dialog = $("#importDialog");
+  dialog.hidden = false;
+  $("#importPath").value = "";
+  setImportMessage("");
+  window.requestAnimationFrame(() => $("#importPath").focus());
+}
+
+function closeImportDialog() {
+  $("#importDialog").hidden = true;
+  setImportMessage("");
+}
+
+async function submitImportDirectory(event) {
+  event.preventDefault();
+  const importPath = $("#importPath").value.trim();
+  if (!importPath) {
+    setImportMessage("请输入目录路径。", true);
+    return;
+  }
+
+  const submitButton = $("#submitImportButton");
+  submitButton.disabled = true;
+  setImportMessage("正在识别目录...");
+  try {
+    const response = await fetch("/api/imports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: importPath }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || `API ${response.status}`);
+    }
+    closeImportDialog();
+    setAutoRefreshStatus(`已导入 ${data.import.label}，正在刷新...`);
+    await loadUsage({ force: true });
+  } catch (error) {
+    setImportMessage(`导入失败：${error.message}`, true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function removeImportDirectory(importPath) {
+  // Removing an import mutates local service state, so static snapshots refuse it.
+  if (isStaticSnapshot()) {
+    setAutoRefreshStatus("静态快照不能移除导入目录，请启动本地服务后再操作");
+    return;
+  }
+  setAutoRefreshStatus("正在移除导入目录...");
+  const response = await fetch(`/api/imports?path=${encodeURIComponent(importPath)}`, {
+    method: "DELETE",
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || `API ${response.status}`);
+  }
+  setAutoRefreshStatus("已移除导入目录，正在刷新...");
+  await loadUsage({ force: true });
+}
+
+function autoRefreshReadyMessage(checkedAt = new Date()) {
+  return `自动刷新 开 · 每 60 秒 · 上次检查 ${clockTime(new Date(checkedAt))}`;
+}
+
+function updatePresetButtons() {
+  for (const button of document.querySelectorAll("[data-preset]")) {
+    button.classList.toggle("active", button.dataset.preset === state.preset);
+  }
+}
+
+function updateRecentControls() {
+  const recentValue = $("#recentValue");
+  if (recentValue && recentValue.value !== state.recentValue) {
+    recentValue.value = state.recentValue;
+  }
+  for (const option of document.querySelectorAll("[data-recent-option]")) {
+    option.setAttribute("aria-selected", String(option.dataset.recentOption === state.recentValue));
+  }
+}
+
+function updateBucketSelect() {
+  // Keep the native select in sync when presets adjust bucket state programmatically.
+  const bucketSelect = $("#bucketSelect");
+  if (bucketSelect && bucketSelect.value !== state.bucket) {
+    bucketSelect.value = state.bucket;
+  }
+}
+
+function dateFieldKey(field) {
+  return field === "end" ? "endDate" : "startDate";
+}
+
+function dateInputForField(field) {
+  return field === "end" ? $("#endDate") : $("#startDate");
+}
+
+function datePickerForField(field) {
+  return field === "end" ? $("#endDatePicker") : $("#startDatePicker");
+}
+
+function datePickerButtonForField(field) {
+  return document.querySelector(`[data-date-picker-button="${field}"]`);
+}
+
+function datePickerViewDate(field) {
+  const selected = parseLocalDate(state[dateFieldKey(field)]);
+  if (selected) {
+    return selected;
+  }
+  if (state.datePickerViews[field]) {
+    return state.datePickerViews[field];
+  }
+  return new Date();
+}
+
+function renderDatePicker(field) {
+  const picker = datePickerForField(field);
+  if (!picker) {
+    return;
+  }
+  picker.innerHTML = renderDatePickerHtml({
+    field,
+    viewDate: datePickerViewDate(field),
+    selectedValue: state[dateFieldKey(field)],
+  });
+}
+
+function closeDatePickers() {
+  state.datePickerField = "";
+  for (const field of ["start", "end"]) {
+    const picker = datePickerForField(field);
+    const button = datePickerButtonForField(field);
+    if (picker) {
+      picker.hidden = true;
+    }
+    if (button) {
+      button.setAttribute("aria-expanded", "false");
+    }
+  }
+}
+
+function setDatePickerOpen(field, open) {
+  if (!open) {
+    closeDatePickers();
+    return;
+  }
+  closeDatePickers();
+  state.datePickerField = field;
+  state.datePickerViews[field] = datePickerViewDate(field);
+  renderDatePicker(field);
+  const picker = datePickerForField(field);
+  const button = datePickerButtonForField(field);
+  if (picker) {
+    picker.hidden = false;
+  }
+  if (button) {
+    button.setAttribute("aria-expanded", "true");
+  }
+}
+
+function applyDateValue(field, value) {
+  const key = dateFieldKey(field);
+  state[key] = value;
+  const input = dateInputForField(field);
+  if (input) {
+    input.value = value;
+  }
+  state.preset = "custom";
+  updatePresetButtons();
+  refreshViewForFilters();
+}
+
+function applyTypedDateValue(field, value) {
+  const normalized = normalizeDateInput(value);
+  if (normalized === null) {
+    return;
+  }
+  applyDateValue(field, normalized);
+}
+
+function selectDatePickerDate(field, value) {
+  const date = parseLocalDate(value);
+  if (!date) {
+    return;
+  }
+  state.datePickerViews[field] = monthStart(date);
+  applyDateValue(field, dateKey(date));
+  closeDatePickers();
+}
+
+function shiftDatePickerMonth(field, offset) {
+  const current = datePickerViewDate(field);
+  state.datePickerViews[field] = new Date(current.getFullYear(), current.getMonth() + offset, 1);
+  renderDatePicker(field);
+}
+
+function setRecentMenuOpen(open) {
+  const menu = $("#recentRangeMenu");
+  const input = $("#recentValue");
+  const button = $("#recentMenuButton");
+  const segment = document.querySelector(".recent-segment");
+  if (!menu || !input || !button || !segment) {
+    return;
+  }
+  menu.hidden = !open;
+  input.setAttribute("aria-expanded", String(open));
+  button.setAttribute("aria-expanded", String(open));
+  segment.classList.toggle("menu-open", open);
+}
+
+function activateRecentValue(value) {
+  const next = nextRecentState(state, value);
+  state.recentValue = next.recentValue;
+  state.preset = next.preset;
+  state.bucket = next.bucket;
+  updateBucketSelect();
+  updatePresetButtons();
+  updateRecentControls();
+  setRecentMenuOpen(false);
+  refreshViewForFilters();
+}
+
+function usageQuery({ force = false, skipCheck = false } = {}) {
+  const params = new URLSearchParams({
+    preset: state.preset,
+    bucket: state.bucket,
+  });
+  if (state.preset === "custom") {
+    if (state.startDate) {
+      params.set("startDate", state.startDate);
+    }
+    if (state.endDate) {
+      params.set("endDate", state.endDate);
+    }
+  }
+  if (state.preset === "recent" && state.recentValue) {
+    params.set("recentValue", state.recentValue);
+  }
+  if (state.sessionId) {
+    params.set("sessionId", state.sessionId);
+    params.set("detail", "full");
+  }
+  if (force) {
+    params.set("force", "1");
+  }
+  if (skipCheck) {
+    params.set("skipCheck", "1");
+  }
+  return `?${params.toString()}`;
+}
+
+async function loadUsage({ force = false, skipCheck = false } = {}) {
+  $("#refreshButton").disabled = true;
+  const embeddedReport = window.__CODEX_USAGE_REPORT__;
+  $("#subtitle").textContent = embeddedReport ? "正在载入静态用量快照..." : "正在扫描本机 Codex 用量...";
+  try {
+    if (embeddedReport) {
+      state.report = embeddedReport;
+      state.metadata = metadataFromReport(embeddedReport);
+      state.summary = null;
+      state.fingerprint = "static";
+      state.turnData = window.__CODEX_USAGE_TURN_DATA__ || null;
+      setAutoRefreshStatus("静态快照 · 自动刷新关闭 · 运行 npm run export 后会生成新快照");
+    } else {
+      const response = await fetch(`/api/usage${usageQuery({ force, skipCheck })}`);
+      if (!response.ok) {
+        throw new Error(`API ${response.status}`);
+      }
+      const data = await response.json();
+      state.report = data.report || null;
+      state.metadata = data.metadata;
+      state.summary = data.report ? null : data.summary;
+      state.fingerprint = data.fingerprint || "";
+      if (state.sessionId) {
+        const turnsResponse = await fetch(`/api/sessions/${encodeURIComponent(state.sessionId)}/turns`);
+        if (!turnsResponse.ok) throw new Error(`Turn API ${turnsResponse.status}`);
+        state.turnData = await turnsResponse.json();
+      } else {
+        state.turnData = null;
+      }
+      setAutoRefreshStatus(autoRefreshReadyMessage(data.checkedAt));
+    }
+    const metadata = currentMetadata();
+    const generated = new Date(metadata.generatedAt).toLocaleString();
+    $("#subtitle").textContent = `${formatTokens(metadata.eventCount)} 条 token 事件 · ${formatTokens(metadata.sessionCount)} 个会话 · ${generated}`;
+    render();
+  } catch (error) {
+    $("#subtitle").textContent = `加载失败：${error.message}`;
+  } finally {
+    $("#refreshButton").disabled = false;
+  }
+}
+
+function sessionOptionLabel(session) {
+  const when = new Date(session.lastAt).toLocaleString();
+  const shortId = session.id.length > 16 ? `${session.id.slice(0, 8)}…${session.id.slice(-4)}` : session.id;
+  return `${when} · ${shortId} · ${session.model || "未知模型"} · ${formatTokens(session.total?.total)} tokens`;
+}
+
+function renderSessionOptions() {
+  const select = $("#sessionSelect");
+  select.innerHTML = `<option value="">全部会话</option>` + state.sessions
+    .map((session) => `<option value="${escapeHtml(session.id)}">${escapeHtml(sessionOptionLabel(session))}</option>`)
+    .join("");
+  select.value = state.sessionId;
+}
+
+async function loadSessions() {
+  if (isStaticSnapshot()) {
+    state.sessions = window.__CODEX_USAGE_REPORT__?.sessions || [];
+  } else {
+    const response = await fetch("/api/sessions");
+    if (!response.ok) {
+      throw new Error(`会话 API ${response.status}`);
+    }
+    state.sessions = (await response.json()).sessions || [];
+  }
+  renderSessionOptions();
+}
+
+function selectSession(sessionId) {
+  state.sessionId = sessionId || "";
+  const url = new URL(window.location.href);
+  if (state.sessionId) {
+    url.searchParams.set("sessionId", state.sessionId);
+  } else {
+    url.searchParams.delete("sessionId");
+  }
+  history.replaceState(null, "", url);
+  refreshViewForFilters();
+}
+
+async function checkForUpdates() {
+  if (isStaticSnapshot() || !state.fingerprint) {
+    return;
+  }
+
+  try {
+    setAutoRefreshStatus("自动刷新 开 · 每 60 秒 · 正在检查...");
+    const response = await fetch(`/api/status?since=${encodeURIComponent(state.fingerprint)}`);
+    if (!response.ok) {
+      throw new Error(`API ${response.status}`);
+    }
+    const status = await response.json();
+    if (status.changed) {
+      setAutoRefreshStatus("检测到更新，正在刷新...");
+      await loadUsage();
+      return;
+    }
+    setAutoRefreshStatus(autoRefreshReadyMessage(status.checkedAt));
+  } catch (error) {
+    setAutoRefreshStatus(`自动刷新失败：${error.message} · 下次继续尝试`);
+  }
+}
+
+function startAutoRefresh() {
+  if (isStaticSnapshot() || state.autoRefreshTimer) {
+    return;
+  }
+  state.autoRefreshTimer = window.setInterval(checkForUpdates, AUTO_REFRESH_INTERVAL_MS);
+}
+
+function refreshViewForFilters() {
+  if (isStaticSnapshot()) {
+    render();
+    return;
+  }
+  void loadUsage({ skipCheck: true });
+}
+
+function updateRankedQuery(kind, value) {
+  // Query changes are purely local and should not trigger a server rescan.
+  if (kind === "project") {
+    state.projectQuery = value;
+  } else {
+    state.modelQuery = value;
+  }
+  render();
+}
+
+function toggleRankedExpansion(kind) {
+  if (kind === "project") {
+    state.projectsExpanded = !state.projectsExpanded;
+  } else {
+    state.modelsExpanded = !state.modelsExpanded;
+  }
+  render();
+}
+
+function bootDashboard() {
+  setupUsageTooltip();
+
+  $("#presetButtons").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-preset]");
+    if (!button) {
+      return;
+    }
+    const next = nextPresetState(state, button.dataset.preset);
+    state.preset = next.preset;
+    state.bucket = next.bucket;
+    updateBucketSelect();
+    updatePresetButtons();
+    updateRecentControls();
+    refreshViewForFilters();
+  });
+
+  $("#bucketSelect").addEventListener("change", (event) => {
+    state.bucket = event.target.value;
+    refreshViewForFilters();
+  });
+
+  $("#sessionSelect").addEventListener("change", (event) => selectSession(event.target.value));
+
+  for (const field of ["start", "end"]) {
+    const input = dateInputForField(field);
+    const button = datePickerButtonForField(field);
+    const picker = datePickerForField(field);
+    input.addEventListener("change", (event) => {
+      applyTypedDateValue(field, event.target.value);
+    });
+    input.addEventListener("focus", () => setDatePickerOpen(field, true));
+    input.addEventListener("click", () => setDatePickerOpen(field, true));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeDatePickers();
+      }
+    });
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setDatePickerOpen(field, state.datePickerField !== field);
+      input.focus();
+    });
+    picker.addEventListener("click", (event) => {
+      const nav = event.target.closest("[data-date-picker-action]");
+      if (nav) {
+        event.stopPropagation();
+        shiftDatePickerMonth(field, nav.dataset.datePickerAction === "next" ? 1 : -1);
+        return;
+      }
+      const day = event.target.closest("[data-date]");
+      if (!day) {
+        return;
+      }
+      event.stopPropagation();
+      selectDatePickerDate(field, day.dataset.date);
+    });
+  }
+
+  $("#recentValue").addEventListener("change", (event) => {
+    activateRecentValue(event.target.value);
+  });
+
+  $("#recentValue").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    activateRecentValue(event.target.value);
+  });
+
+  $("#recentValue").addEventListener("focus", () => {
+    state.preset = "recent";
+    updatePresetButtons();
+    setRecentMenuOpen(true);
+  });
+
+  $("#recentMenuButton").addEventListener("click", (event) => {
+    event.stopPropagation();
+    state.preset = "recent";
+    updatePresetButtons();
+    const shouldOpen = $("#recentRangeMenu").hidden;
+    $("#recentValue").focus();
+    setRecentMenuOpen(shouldOpen);
+  });
+
+  $("#recentRangeMenu").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-recent-option]");
+    if (!option) {
+      return;
+    }
+    event.stopPropagation();
+    activateRecentValue(option.dataset.recentOption);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".recent-segment")) {
+      setRecentMenuOpen(false);
+    }
+    if (!event.target.closest(".date-input-wrap")) {
+      closeDatePickers();
+    }
+  });
+
+  $("#refreshButton").addEventListener("click", () => loadUsage({ force: true }));
+  $("#importButton").addEventListener("click", openImportDialog);
+  $("#addImportButton").addEventListener("click", openImportDialog);
+  $("#projectSearch").addEventListener("input", (event) => updateRankedQuery("project", event.target.value));
+  $("#modelSearch").addEventListener("input", (event) => updateRankedQuery("model", event.target.value));
+  $("#projectToggle").addEventListener("click", () => toggleRankedExpansion("project"));
+  $("#modelToggle").addEventListener("click", () => toggleRankedExpansion("model"));
+  $("#homeList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-import-action='remove']");
+    if (!button) {
+      return;
+    }
+    button.disabled = true;
+    removeImportDirectory(button.dataset.importPath).catch((error) => {
+      button.disabled = false;
+      setAutoRefreshStatus(`移除失败：${error.message}`);
+    });
+  });
+  $("#importForm").addEventListener("submit", submitImportDirectory);
+  $("#pickImportDirectoryButton").addEventListener("click", pickImportDirectory);
+  $("#cancelImportButton").addEventListener("click", closeImportDialog);
+  $("#closeImportDialogButton").addEventListener("click", closeImportDialog);
+  $("#importDialog").addEventListener("click", (event) => {
+    if (event.target.id === "importDialog") {
+      closeImportDialog();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setRecentMenuOpen(false);
+    }
+    if (event.key === "Escape" && !$("#importDialog").hidden) {
+      closeImportDialog();
+    }
+  });
+  $("#themeToggle").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-theme-option]");
+    if (!button) {
+      return;
+    }
+    setTheme(button.dataset.themeOption);
+  });
+  window.addEventListener("resize", render);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      startAutoRefresh();
+      checkForUpdates();
+    }
+  });
+
+  setTheme(preferredTheme(), { persist: false });
+  updateRecentControls();
+  updateBucketSelect();
+  setImportControlsDisabled(isStaticSnapshot());
+  Promise.all([loadSessions(), loadUsage()]).then(startAutoRefresh).catch((error) => {
+    $("#subtitle").textContent = `加载失败：${error.message}`;
+  });
+}
+
+if (typeof document !== "undefined") {
+  bootDashboard();
+}
+
+</script>
+  </body>
+</html>

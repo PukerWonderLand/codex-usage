@@ -184,6 +184,23 @@ label {
   gap: 8px;
 }
 
+.session-control select {
+  width: min(520px, 78vw);
+}
+
+.insights-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.insight-card > strong { display: block; margin: 12px 0 8px; font-size: clamp(1.5rem, 3vw, 2.2rem); }
+.insight-copy, .insight-note { margin: 6px 0 0; color: var(--muted); }
+.insight-note { font-size: 0.82rem; }
+.context-track { overflow: hidden; height: 10px; border-radius: 999px; background: var(--track); }
+.context-track span { display: block; width: 0; height: 100%; background: var(--green); transition: width 180ms ease; }
+.turn-table-wrap { overflow-x: auto; }
+.turn-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.turn-table th, .turn-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; }
+.turn-table th:first-child, .turn-table td:first-child, .turn-table th:nth-child(2), .turn-table td:nth-child(2) { text-align: left; }
+.turn-table tbody tr:hover { background: var(--track); }
+@media (max-width: 820px) { .insights-grid { grid-template-columns: 1fr; } }
+
 .segmented {
   display: flex;
   flex-wrap: wrap;
