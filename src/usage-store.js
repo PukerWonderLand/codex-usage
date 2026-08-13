@@ -155,6 +155,9 @@ export class UsageStore {
     this.generatedAt = "";
     this.fingerprint = "";
     this.checkedAt = "";
+    this.summaryCache = new Map();
+    this.metadataCache = null;
+    this.sessionRowsCache = null;
   }
 
   async open() {
@@ -342,17 +345,28 @@ export class UsageStore {
       }
     }
 
+    const changed = this.fingerprint !== status.fingerprint;
     this.homes = homes;
     this.warnings = warnings;
-    this.generatedAt = new Date().toISOString();
+    if (changed || force || !this.generatedAt) {
+      this.generatedAt = new Date().toISOString();
+    }
     this.fingerprint = status.fingerprint;
     this.checkedAt = status.checkedAt;
     this.writeMeta("generated_at", this.generatedAt);
     this.writeMeta("fingerprint", this.fingerprint);
+    if (changed || force) {
+      this.summaryCache.clear();
+      this.metadataCache = null;
+      this.sessionRowsCache = null;
+    }
     return { ...status, updatedFileCount };
   }
 
   metadata() {
+    if (this.metadataCache) {
+      return this.metadataCache;
+    }
     const totals = this.database
       .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
       .get();
@@ -365,7 +379,7 @@ export class UsageStore {
         .all()
         .map((row) => [row.home_id, row]),
     );
-    return {
+    this.metadataCache = {
       generatedAt: this.generatedAt,
       eventCount: Number(totals.event_count || 0),
       sessionCount: Number(totals.session_count || 0),
@@ -381,6 +395,7 @@ export class UsageStore {
       }),
       warnings: this.warnings,
     };
+    return this.metadataCache;
   }
 
   listSessions() {
@@ -467,11 +482,12 @@ export class UsageStore {
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
         WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+          AND (? IS NULL OR session_id = ?)
       `)
-      .get(...rangeParameters(range));
+      .get(...scopedRangeParameters(range, sessionId));
   }
 
-  groupedRange(column, range, orderBy = "total DESC") {
+  groupedRange(column, range, orderBy = "total DESC", sessionId = "") {
     const allowedColumns = new Set(["channel", "home_label", "model", "project", "hour_key", "day_key", "week_key", "month_key"]);
     if (!allowedColumns.has(column)) {
       throw new Error(`不支持的聚合字段：${column}`);
@@ -490,10 +506,11 @@ export class UsageStore {
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
         WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+          AND (? IS NULL OR session_id = ?)
         GROUP BY ${column}
         ORDER BY ${orderBy}
       `)
-      .all(...rangeParameters(range));
+      .all(...scopedRangeParameters(range, sessionId));
     return rows.map((row) => ({
       key: row.key,
       name: row.key,
@@ -503,7 +520,7 @@ export class UsageStore {
     }));
   }
 
-  timelineRange(range, bucket) {
+  timelineRange(range, bucket, sessionId = "") {
     const bucketColumns = {
       hour: "hour_key",
       day: "day_key",
@@ -511,7 +528,7 @@ export class UsageStore {
       month: "month_key",
     };
     const bucketColumn = bucketColumns[bucket] || bucketColumns.day;
-    const rows = this.groupedRange(bucketColumn, range, "key ASC");
+    const rows = this.groupedRange(bucketColumn, range, "key ASC", sessionId);
     const channelRows = this.database
       .prepare(`
         SELECT
@@ -527,10 +544,11 @@ export class UsageStore {
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
         WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+          AND (? IS NULL OR session_id = ?)
         GROUP BY ${bucketColumn}, channel
         ORDER BY ${bucketColumn} ASC, total DESC
       `)
-      .all(...rangeParameters(range));
+      .all(...scopedRangeParameters(range, sessionId));
     const channelsByBucket = new Map();
     for (const row of channelRows) {
       const channels = channelsByBucket.get(row.bucket_key) || [];
@@ -551,7 +569,15 @@ export class UsageStore {
   }
 
   summarize(filters = {}) {
-    const bounds = this.database.prepare("SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events").get();
+    const cacheKey = JSON.stringify({ fingerprint: this.fingerprint, filters });
+    const cached = this.summaryCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const sessionId = filters.sessionId || "";
+    const bounds = this.database
+      .prepare("SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events WHERE (? IS NULL OR session_id = ?)")
+      .get(sessionId || null, sessionId || null);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {
       boundaryEvents.push({ timestamp: new Date(Number(bounds.minimum)).toISOString() });
@@ -560,10 +586,10 @@ export class UsageStore {
       boundaryEvents.push({ timestamp: new Date(Number(bounds.maximum)).toISOString() });
     }
     const range = resolveDateRange(filters, boundaryEvents);
-    const aggregate = this.aggregateRange(range);
+    const aggregate = this.aggregateRange(range, sessionId);
     const totals = usageFromRow(aggregate);
     const previousRange = previousUsageRange(range);
-    const previousAggregate = previousRange ? this.aggregateRange(previousRange) : null;
+    const previousAggregate = previousRange ? this.aggregateRange(previousRange, sessionId) : null;
     const comparison = usageComparisonFromAggregates({
       range,
       currentTotals: totals,
@@ -573,7 +599,7 @@ export class UsageStore {
       now: filters.now ? new Date(filters.now) : new Date(),
     });
     const bucket = filters.bucket || "day";
-    return {
+    const summary = {
       generatedAt: this.generatedAt,
       range: {
         preset: range.preset,
@@ -587,12 +613,17 @@ export class UsageStore {
       eventCount: Number(aggregate.event_count || 0),
       sessionCount: Number(aggregate.session_count || 0),
       homeCount: Number(aggregate.home_count || 0),
-      timeline: this.timelineRange(range, bucket),
-      channels: this.groupedRange("channel", range),
-      homes: this.groupedRange("home_label", range),
-      models: this.groupedRange("model", range),
-      projects: this.groupedRange("project", range),
+      timeline: this.timelineRange(range, bucket, sessionId),
+      channels: this.groupedRange("channel", range, "total DESC", sessionId),
+      homes: this.groupedRange("home_label", range, "total DESC", sessionId),
+      models: this.groupedRange("model", range, "total DESC", sessionId),
+      projects: this.groupedRange("project", range, "total DESC", sessionId),
     };
+    if (this.summaryCache.size >= 100) {
+      this.summaryCache.delete(this.summaryCache.keys().next().value);
+    }
+    this.summaryCache.set(cacheKey, summary);
+    return summary;
   }
 
   close() {

@@ -14,7 +14,6 @@ const state = {
   sessions: [],
   turnData: null,
   now: null,
-  autoRefreshTimer: null,
   theme: "light",
   projectQuery: "",
   modelQuery: "",
@@ -27,7 +26,6 @@ const state = {
   },
 };
 
-const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const MS_PER_HOUR = 60 * 60 * 1000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const THEME_STORAGE_KEY = "codexUsageTheme";
@@ -1487,8 +1485,8 @@ async function removeImportDirectory(importPath) {
   await loadUsage({ force: true });
 }
 
-function autoRefreshReadyMessage(checkedAt = new Date()) {
-  return `自动刷新 开 · 每 60 秒 · 上次检查 ${clockTime(new Date(checkedAt))}`;
+function refreshReadyMessage(checkedAt = new Date()) {
+  return `按需刷新 · 上次检查 ${clockTime(new Date(checkedAt))}`;
 }
 
 function updatePresetButtons() {
@@ -1667,7 +1665,6 @@ function usageQuery({ force = false, skipCheck = false } = {}) {
   }
   if (state.sessionId) {
     params.set("sessionId", state.sessionId);
-    params.set("detail", "full");
   }
   if (force) {
     params.set("force", "1");
@@ -1689,9 +1686,13 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
       state.summary = null;
       state.fingerprint = "static";
       state.turnData = window.__CODEX_USAGE_TURN_DATA__ || null;
-      setAutoRefreshStatus("静态快照 · 自动刷新关闭 · 运行 npm run export 后会生成新快照");
+      setAutoRefreshStatus("静态快照 · 运行 npm run export 后会生成新快照");
     } else {
-      const response = await fetch(`/api/usage${usageQuery({ force, skipCheck })}`);
+      const usagePromise = fetch(`/api/usage${usageQuery({ force, skipCheck })}`);
+      const turnsPromise = state.sessionId
+        ? fetch(`/api/sessions/${encodeURIComponent(state.sessionId)}/turns`)
+        : null;
+      const response = await usagePromise;
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
       }
@@ -1700,14 +1701,14 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
       state.metadata = data.metadata;
       state.summary = data.report ? null : data.summary;
       state.fingerprint = data.fingerprint || "";
-      if (state.sessionId) {
-        const turnsResponse = await fetch(`/api/sessions/${encodeURIComponent(state.sessionId)}/turns`);
+      if (turnsPromise) {
+        const turnsResponse = await turnsPromise;
         if (!turnsResponse.ok) throw new Error(`Turn API ${turnsResponse.status}`);
         state.turnData = await turnsResponse.json();
       } else {
         state.turnData = null;
       }
-      setAutoRefreshStatus(autoRefreshReadyMessage(data.checkedAt));
+      setAutoRefreshStatus(refreshReadyMessage(data.checkedAt));
     }
     const metadata = currentMetadata();
     const generated = new Date(metadata.generatedAt).toLocaleString();
@@ -1761,36 +1762,6 @@ function selectSession(sessionId) {
   }
   history.replaceState(null, "", url);
   refreshViewForFilters();
-}
-
-async function checkForUpdates() {
-  if (isStaticSnapshot() || !state.fingerprint) {
-    return;
-  }
-
-  try {
-    setAutoRefreshStatus("自动刷新 开 · 每 60 秒 · 正在检查...");
-    const response = await fetch(`/api/status?since=${encodeURIComponent(state.fingerprint)}`);
-    if (!response.ok) {
-      throw new Error(`API ${response.status}`);
-    }
-    const status = await response.json();
-    if (status.changed) {
-      setAutoRefreshStatus("检测到更新，正在刷新...");
-      await loadUsage();
-      return;
-    }
-    setAutoRefreshStatus(autoRefreshReadyMessage(status.checkedAt));
-  } catch (error) {
-    setAutoRefreshStatus(`自动刷新失败：${error.message} · 下次继续尝试`);
-  }
-}
-
-function startAutoRefresh() {
-  if (isStaticSnapshot() || state.autoRefreshTimer) {
-    return;
-  }
-  state.autoRefreshTimer = window.setInterval(checkForUpdates, AUTO_REFRESH_INTERVAL_MS);
 }
 
 function refreshViewForFilters() {
@@ -1924,7 +1895,7 @@ function bootDashboard() {
     }
   });
 
-  $("#refreshButton").addEventListener("click", () => loadUsage({ force: true }));
+  $("#refreshButton").addEventListener("click", () => loadUsage());
   $("#importButton").addEventListener("click", openImportDialog);
   $("#addImportButton").addEventListener("click", openImportDialog);
   $("#projectSearch").addEventListener("input", (event) => updateRankedQuery("project", event.target.value));
@@ -1967,18 +1938,11 @@ function bootDashboard() {
     setTheme(button.dataset.themeOption);
   });
   window.addEventListener("resize", render);
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      startAutoRefresh();
-      checkForUpdates();
-    }
-  });
-
   setTheme(preferredTheme(), { persist: false });
   updateRecentControls();
   updateBucketSelect();
   setImportControlsDisabled(isStaticSnapshot());
-  Promise.all([loadSessions(), loadUsage()]).then(startAutoRefresh).catch((error) => {
+  Promise.all([loadSessions(), loadUsage()]).catch((error) => {
     $("#subtitle").textContent = `加载失败：${error.message}`;
   });
 }

@@ -104,3 +104,60 @@ test("UsageStore 汇总结果与内存索引保持一致", async () => {
     store.close();
   }
 });
+
+test("UsageStore 使用 Codex 状态库中的会话名称和中文标题", async () => {
+  const { homeDir, databaseFile } = await makeStoreFixture();
+  const codexHome = path.join(homeDir, ".codex");
+  const state = new DatabaseSync(path.join(codexHome, "state_5.sqlite"));
+  state.exec(`
+    CREATE TABLE threads (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      title TEXT NOT NULL,
+      first_user_message TEXT NOT NULL DEFAULT '',
+      preview TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO threads (id, name, title) VALUES
+      ('store-session', '我的自定义名称', '自动生成的中文标题');
+  `);
+  state.close();
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    await store.sync();
+    const [session] = store.listSessions();
+    assert.equal(session.name, "我的自定义名称");
+    assert.equal(session.title, "自动生成的中文标题");
+  } finally {
+    store.close();
+  }
+});
+
+test("UsageStore 在 SQLite 中按 session 汇总而不构建全量报告", async () => {
+  const { homeDir, databaseFile } = await makeStoreFixture();
+  const secondDir = path.join(homeDir, ".codex", "sessions", "2026", "07", "13");
+  await mkdir(secondDir, { recursive: true });
+  await writeFile(
+    path.join(secondDir, "rollout-second.jsonl"),
+    jsonl([
+      {
+        timestamp: "2026-07-13T01:00:00.000Z",
+        type: "session_meta",
+        payload: { id: "second-session", source: "cli", originator: "codex-tui", cwd: "/work/second" },
+      },
+      tokenRow("2026-07-13T01:01:00.000Z", 456, 400, 100, 56, 8),
+    ]),
+  );
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    await store.sync();
+    const selected = store.summarize({ preset: "all", bucket: "day", sessionId: "store-session" });
+    assert.equal(selected.sessionCount, 1);
+    assert.equal(selected.totals.total, 123);
+    assert.equal(selected.timeline.reduce((sum, row) => sum + row.total.total, 0), 123);
+    assert.deepEqual(selected.projects.map((row) => row.name), ["/work/store"]);
+  } finally {
+    store.close();
+  }
+});
