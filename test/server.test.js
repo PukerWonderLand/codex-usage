@@ -110,6 +110,8 @@ test("server serves the dashboard and usage API", async () => {
     assert.equal(sessionsJson.sessions[0].id, "server-1");
     assert.equal(sessionsJson.sessions[0].total.total, 123);
     assert.equal(turns.turns[0].turnId, "server-turn-1");
+    assert.equal(turns.turns[0].requestCount, 1);
+    assert.equal(turns.turns[0].requests, undefined);
     assert.equal(turns.turns[0].cacheMissInput, 80);
     assert.equal(turns.summary.latestContext.remaining, 258277);
     assert.equal(pricing.models["gpt-5.6-sol"].perMillion.output, 30);
@@ -141,6 +143,15 @@ test("server serves the dashboard and usage API", async () => {
     const missing = await fetch(`${baseUrl}/api/usage?detail=full&sessionId=missing`).then((response) => response.json());
     assert.equal(missing.summary.sessionCount, 0);
     assert.equal(missing.summary.totals.total, 0);
+
+    const selectedLightweight = await fetch(`${baseUrl}/api/usage?sessionId=server-1`).then((response) => response.json());
+    assert.equal(selectedLightweight.report, undefined);
+    assert.equal(selectedLightweight.summary.sessionCount, 1);
+    assert.equal(selectedLightweight.summary.totals.total, 123);
+    const requestPage = await fetch(`${baseUrl}/api/sessions/server-1/turns/server-turn-1/requests?limit=1`)
+      .then((response) => response.json());
+    assert.equal(requestPage.total, 1);
+    assert.equal(requestPage.requests.length, 1);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

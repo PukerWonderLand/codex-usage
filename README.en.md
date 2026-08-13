@@ -188,7 +188,7 @@ The web dashboard supports:
 - Light and dark themes saved in local browser storage
 - Directory imports from the top-right button or the scanned home panel
 
-In service mode, the page performs a lightweight check every `60` seconds. The check reads only session file `path + size + mtimeMs` values to build a fingerprint. Full logs are reparsed only when files change or when you click the force rescan button.
+Server mode refreshes on demand and does not scan on a timer or when the window regains focus. Page loads and refresh-button clicks incrementally update only changed logs. Session changes use the SQLite index to open only the selected log. Turn details are cached by file size and modification time under `~/.codex-usage/turn-cache/`, so large unchanged sessions do not need to be reparsed.
 
 ## Directory Imports and Project Logs
 
@@ -240,6 +240,7 @@ GET /api/pricing
 GET /api/sessions
 GET /api/sessions/<sessionId>/turns
 GET /api/sessions/<sessionId>/turns/latest
+GET /api/sessions/<sessionId>/turns/<turnId>/requests?offset=0&limit=100
 GET /api/summary
 GET /api/imports
 POST /api/imports
@@ -253,7 +254,7 @@ Endpoint notes:
 - `/api/usage?force=1` forces a full rescan
 - `/api/usage?detail=full` returns the full `report` for debugging
 - `/api/summary` returns only the summary wrapper
-- `/api/sessions` lists selectable sessions; the turn routes expose native per-turn details
+- `/api/sessions` lists selectable sessions; turn routes return lightweight summaries and request details are loaded on demand through the paginated route
 - `/api/pricing` exposes the built-in pricing version for auditing
 - `/api/imports` lists, adds, or removes directories imported from the dashboard
 

@@ -191,7 +191,7 @@ notify = ["codex-usage", "hook"]
 - 浅色/深色主题切换，选择会保存在浏览器本地
 - 从右上角或“扫描目录”面板导入目录
 
-服务模式下，页面会每 `60` 秒做一次轻量检查。轻量检查只读取 session 文件的 `path + size + mtimeMs` 生成 fingerprint；只有检测到文件变化或点击“强制重扫”时，才重新解析完整日志。
+服务模式采用按需刷新，不会定时扫描，也不会在窗口重新获得焦点时扫描。页面载入或点击刷新按钮时只增量更新发生变化的日志；切换会话时通过 SQLite 索引直接定位并读取对应日志。会话 turn 明细会按文件大小和修改时间缓存到 `~/.codex-usage/turn-cache/`，大文件后续访问无需重新解析。
 
 ## 导入目录和项目用量日志
 
@@ -243,6 +243,7 @@ GET /api/pricing
 GET /api/sessions
 GET /api/sessions/<sessionId>/turns
 GET /api/sessions/<sessionId>/turns/latest
+GET /api/sessions/<sessionId>/turns/<turnId>/requests?offset=0&limit=100
 GET /api/summary
 GET /api/imports
 POST /api/imports
@@ -256,7 +257,7 @@ DELETE /api/imports?path=<absolute-path>
 - `/api/usage?force=1` 强制重扫
 - `/api/usage?detail=full` 返回完整 `report`，用于调试明细
 - `/api/summary` 只返回 summary 包装结果
-- `/api/sessions` 返回可选会话，turns 路由返回该会话的原生回合明细
+- `/api/sessions` 返回可选会话；turns 路由默认返回轻量回合汇总，request 明细通过分页路由按需读取
 - `/api/pricing` 返回当前内置价格版本，便于前端和外部客户端审计
 - `/api/imports` 用于查看、添加或删除网页导入的目录
 

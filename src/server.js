@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,11 @@ function requestFilters(url) {
     endDate: url.searchParams.get("endDate") || "",
     recentValue: url.searchParams.get("recentValue") || "",
   };
+}
+
+function turnSummary(turn) {
+  const { requests = [], ...summary } = turn;
+  return { ...summary, requestCount: requests.length };
 }
 
 export function isFullDetailHeapAvailable(heapSizeLimitBytes = v8.getHeapStatistics().heap_size_limit) {
@@ -205,6 +210,47 @@ export function createUsageServer(options = {}) {
   const usageStore = new UsageStore(options);
   let storeStatus = null;
   let syncPromise = null;
+  const turnCache = new Map();
+  const turnCachePromises = new Map();
+
+  async function sessionTurns(session) {
+    const info = await stat(session.filePath);
+    const fingerprint = `${info.size}:${info.mtimeMs}`;
+    const memoryEntry = turnCache.get(session.id);
+    if (memoryEntry?.fingerprint === fingerprint) {
+      return memoryEntry.turns;
+    }
+    if (turnCachePromises.has(session.id)) {
+      return turnCachePromises.get(session.id);
+    }
+    const promise = (async () => {
+      const cacheDir = path.join(options.homeDir || os.homedir(), ".codex-usage", "turn-cache");
+      const cacheFile = path.join(cacheDir, `${session.id}.json`);
+      try {
+        const cached = JSON.parse(await readFile(cacheFile, "utf8"));
+        if (cached.fingerprint === fingerprint && Array.isArray(cached.turns)) {
+          turnCache.set(session.id, cached);
+          return cached.turns;
+        }
+      } catch {
+        // Missing or stale caches are rebuilt from only the selected session.
+      }
+      const turns = await parseSessionTurns(session.filePath, {
+        homeId: session.homeId,
+        homeLabel: session.homeLabel,
+        homePath: session.homePath,
+      });
+      const entry = { fingerprint, turns };
+      turnCache.set(session.id, entry);
+      await mkdir(cacheDir, { recursive: true });
+      const temporaryFile = `${cacheFile}.${process.pid}.tmp`;
+      await writeFile(temporaryFile, JSON.stringify(entry));
+      await rename(temporaryFile, cacheFile);
+      return turns;
+    })().finally(() => turnCachePromises.delete(session.id));
+    turnCachePromises.set(session.id, promise);
+    return promise;
+  }
 
   async function metadataForStore() {
     // The dashboard needs both active scan sources and stored imports that may currently be unsupported.
@@ -260,28 +306,52 @@ export function createUsageServer(options = {}) {
         return;
       }
 
-      const turnsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/turns(?:\/(latest))?$/);
-      if (turnsMatch) {
-        const sessionId = decodeURIComponent(turnsMatch[1]);
-        const currentUsageOptions = await usageOptions(options);
-        const report = await buildUsageReport(currentUsageOptions);
-        const session = report.sessions.find((candidate) => candidate.id === sessionId);
+      const turnRequestsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/turns\/([^/]+)\/requests$/);
+      if (turnRequestsMatch) {
+        const sessionId = decodeURIComponent(turnRequestsMatch[1]);
+        const turnId = decodeURIComponent(turnRequestsMatch[2]);
+        await loadUsageStore({ check: false });
+        const session = usageStore.sessionSource(sessionId);
         if (!session) {
           sendJson(response, 404, { error: "Session not found", sessionId });
           return;
         }
-        const turns = await parseSessionTurns(session.filePath, {
-          homeId: session.homeId,
-          homeLabel: session.homeLabel,
-          homePath: session.homePath,
+        const turns = await sessionTurns(session);
+        const turn = turns.find((candidate) => candidate.turnId === turnId);
+        if (!turn) {
+          sendJson(response, 404, { error: "Turn not found", sessionId, turnId });
+          return;
+        }
+        const offset = Math.max(0, Number.parseInt(url.searchParams.get("offset") || "0", 10) || 0);
+        const limit = Math.min(500, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "100", 10) || 100));
+        sendJson(response, 200, {
+          sessionId,
+          turnId,
+          offset,
+          limit,
+          total: turn.requests.length,
+          requests: turn.requests.slice(offset, offset + limit),
         });
+        return;
+      }
+
+      const turnsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/turns(?:\/(latest))?$/);
+      if (turnsMatch) {
+        const sessionId = decodeURIComponent(turnsMatch[1]);
+        await loadUsageStore({ check: false });
+        const session = usageStore.sessionSource(sessionId);
+        if (!session) {
+          sendJson(response, 404, { error: "Session not found", sessionId });
+          return;
+        }
+        const turns = await sessionTurns(session);
         if (turnsMatch[2] === "latest") {
-          sendJson(response, 200, { sessionId, turn: turns.at(-1) || null });
+          sendJson(response, 200, { sessionId, turn: turns.length ? turnSummary(turns.at(-1)) : null });
           return;
         }
         sendJson(response, 200, {
           sessionId,
-          turns,
+          turns: turns.map(turnSummary),
           summary: {
             turnCount: turns.length,
             completedTurnCount: turns.filter((turn) => turn.status === "completed").length,
@@ -388,7 +458,7 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/sessions") {
-        await loadUsageStore();
+        await loadUsageStore({ check: false });
         sendJson(response, 200, { sessions: usageStore.listSessions() });
         return;
       }
