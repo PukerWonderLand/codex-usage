@@ -1723,7 +1723,11 @@ async function loadUsage({ force = false, skipCheck = false } = {}) {
 function sessionOptionLabel(session) {
   const when = new Date(session.lastAt).toLocaleString();
   const shortId = session.id.length > 16 ? `${session.id.slice(0, 8)}…${session.id.slice(-4)}` : session.id;
-  return `${when} · ${shortId} · ${session.model || "未知模型"} · ${formatTokens(session.total?.total)} tokens`;
+  const rawTitle = session.name || session.title || "";
+  const normalizedTitle = rawTitle.replace(/\s+/g, " ").trim();
+  const title = normalizedTitle.length > 64 ? `${normalizedTitle.slice(0, 64)}…` : normalizedTitle;
+  const identity = title ? `${title} · ${shortId}` : shortId;
+  return `${when} · ${identity} · ${session.model || "未知模型"} · ${formatTokens(session.total?.total)} tokens`;
 }
 
 function renderSessionOptions() {

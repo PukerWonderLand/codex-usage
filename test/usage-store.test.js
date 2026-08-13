@@ -3,6 +3,7 @@ import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
 import { UsageStore } from "../src/usage-store.js";
 import { buildUsageIndex, summarizeUsageIndex } from "../src/usage-core.js";

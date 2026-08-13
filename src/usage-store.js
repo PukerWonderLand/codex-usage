@@ -1,3 +1,4 @@
+import { readdirSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import os from "node:os";
@@ -52,6 +53,95 @@ function rangeParameters(range) {
   const start = range.start ? range.start.getTime() : null;
   const end = range.end ? range.end.getTime() : null;
   return [start, start, end, end];
+}
+
+function scopedRangeParameters(range, sessionId = "") {
+  return [...rangeParameters(range), sessionId || null, sessionId || null];
+}
+
+const THREAD_LABEL_CACHE = new Map();
+
+function threadLabelsByHome(homes) {
+  const labels = new Map();
+  for (const home of homes) {
+    if (home.kind === "project-log") {
+      continue;
+    }
+    let stateFiles = [];
+    try {
+      stateFiles = readdirSync(home.path, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && /^state(?:_\d+)?\.sqlite$/.test(entry.name))
+        .map((entry) => path.join(home.path, entry.name));
+    } catch {
+      continue;
+    }
+
+    const fingerprint = stateFiles
+      .map((stateFile) => {
+        try {
+          const info = statSync(stateFile);
+          let wal = "";
+          try {
+            const walInfo = statSync(`${stateFile}-wal`);
+            wal = `:${walInfo.size}:${walInfo.mtimeMs}`;
+          } catch {
+            // A checkpointed state database may not have a WAL file.
+          }
+          return `${stateFile}:${info.size}:${info.mtimeMs}${wal}`;
+        } catch {
+          return stateFile;
+        }
+      })
+      .join("|");
+    const cached = THREAD_LABEL_CACHE.get(home.id);
+    if (cached?.fingerprint === fingerprint) {
+      for (const [id, label] of cached.labels) {
+        labels.set(`${home.id}\0${id}`, label);
+      }
+      continue;
+    }
+    const homeLabels = new Map();
+    for (const stateFile of stateFiles) {
+      let stateDatabase;
+      try {
+        stateDatabase = new DatabaseSync(stateFile, { readOnly: true });
+        const columns = new Set(
+          stateDatabase.prepare("PRAGMA table_info(threads)").all().map((column) => column.name),
+        );
+        if (!columns.has("id")) {
+          continue;
+        }
+        const selectable = ["name", "title", "first_user_message", "preview"].filter((column) =>
+          columns.has(column),
+        );
+        if (!selectable.length) {
+          continue;
+        }
+        const rows = stateDatabase
+          .prepare(`SELECT id, ${selectable.join(", ")} FROM threads`)
+          .all();
+        for (const row of rows) {
+          const title = row.title || row.first_user_message || row.preview;
+          const value = row.name || title;
+          if (typeof value === "string" && value.trim()) {
+            homeLabels.set(row.id, {
+              name: typeof row.name === "string" ? row.name.trim() : "",
+              title: typeof title === "string" ? title.trim() : "",
+            });
+          }
+        }
+      } catch {
+        // Older/partial Codex homes may not have a readable threads table.
+      } finally {
+        stateDatabase?.close();
+      }
+    }
+    THREAD_LABEL_CACHE.set(home.id, { fingerprint, labels: homeLabels });
+    for (const [id, label] of homeLabels) {
+      labels.set(`${home.id}\0${id}`, label);
+    }
+  }
+  return labels;
 }
 
 export class UsageStore {
@@ -294,10 +384,13 @@ export class UsageStore {
   }
 
   listSessions() {
-    return this.database
-      .prepare(`
+    const threadLabels = threadLabelsByHome(this.homes);
+    if (!this.sessionRowsCache) {
+      this.sessionRowsCache = this.database
+        .prepare(`
         SELECT
           session_id AS id,
+          MAX(home_id) AS home_id,
           MIN(timestamp_ms) AS first_at,
           MAX(timestamp_ms) AS last_at,
           MAX(channel) AS channel,
@@ -313,21 +406,53 @@ export class UsageStore {
         FROM events
         GROUP BY session_id
         ORDER BY last_at DESC
-      `)
-      .all()
-      .map((row) => ({
-        id: row.id,
-        firstAt: new Date(Number(row.first_at)).toISOString(),
-        lastAt: new Date(Number(row.last_at)).toISOString(),
-        channel: row.channel,
-        project: row.project,
-        model: row.model,
-        eventCount: Number(row.event_count || 0),
-        total: usageFromRow(row),
-      }));
+        `)
+        .all();
+    }
+    return this.sessionRowsCache.map((row) => {
+        const label = threadLabels.get(`${row.home_id}\0${row.id}`) || {};
+        return {
+          id: row.id,
+          name: label.name || "",
+          title: label.title || "",
+          firstAt: new Date(Number(row.first_at)).toISOString(),
+          lastAt: new Date(Number(row.last_at)).toISOString(),
+          channel: row.channel,
+          project: row.project,
+          model: row.model,
+          eventCount: Number(row.event_count || 0),
+          total: usageFromRow(row),
+        };
+      });
   }
 
-  aggregateRange(range) {
+  sessionSource(sessionId) {
+    const row = this.database
+      .prepare(`
+        SELECT
+          events.session_id,
+          source_files.path AS file_path,
+          source_files.home_id,
+          source_files.home_label,
+          source_files.home_path
+        FROM events
+        JOIN source_files ON source_files.path = events.source_path
+        WHERE events.session_id = ?
+        LIMIT 1
+      `)
+      .get(sessionId);
+    return row
+      ? {
+          id: row.session_id,
+          filePath: row.file_path,
+          homeId: row.home_id,
+          homeLabel: row.home_label,
+          homePath: row.home_path,
+        }
+      : null;
+  }
+
+  aggregateRange(range, sessionId = "") {
     return this.database
       .prepare(`
         SELECT

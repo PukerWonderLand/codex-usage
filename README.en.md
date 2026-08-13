@@ -15,6 +15,7 @@ It helps you answer questions like: How many tokens did I use today? Which proje
 - Scans official Codex session logs locally; no external upload is required
 - Tracks total tokens, input, cached input, output, reasoning output, and session count
 - Shows per-session and native Codex-turn tokens, cache behavior, API-equivalent cost, and context headroom
+- In server mode, reads Codex's local state database to show custom session names or generated titles while retaining a short session ID for verification
 - Supports today, this week, this month, all time, and custom date ranges
 - Shows time trends by hour, day, week, or month
 - Breaks usage down by channel, project directory, model, and scanned home
