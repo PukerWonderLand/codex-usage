@@ -118,6 +118,31 @@ test("UsageStore 汇总结果与内存索引保持一致", async () => {
   }
 });
 
+test("UsageStore 对跨小时边界的最近 24 小时保持精确", async () => {
+  const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
+  await appendFile(sessionFile, JSON.stringify(tokenRow("2026-07-12T01:40:00.000Z", 200, 160, 30, 40, 7)) + "\n");
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    await store.sync();
+    const filters = {
+      preset: "recent",
+      recentValue: "1天",
+      bucket: "hour",
+      now: "2026-07-13T01:30:00.000Z",
+    };
+    const index = await buildUsageIndex({ homeDir });
+    const actual = store.summarize(filters);
+    const expected = summarizeUsageIndex(index, filters);
+
+    assert.deepEqual({ ...actual, generatedAt: "" }, { ...expected, generatedAt: "" });
+    assert.equal(actual.eventCount, 1);
+    assert.equal(actual.totals.total, 77);
+  } finally {
+    store.close();
+  }
+});
+
 test("UsageStore 使用 Codex 状态库中的会话名称和中文标题", async () => {
   const { homeDir, databaseFile } = await makeStoreFixture();
   const codexHome = path.join(homeDir, ".codex");

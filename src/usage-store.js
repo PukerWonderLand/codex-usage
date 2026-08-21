@@ -688,11 +688,16 @@ export class UsageStore {
       : null;
   }
 
-  aggregateRange(range, sessionId = "") {
+  aggregateRange(range, sessionId = "", exact = false) {
+    const table = exact ? "events" : "event_rollups";
+    const eventCount = exact ? "COUNT(*)" : "SUM(event_count)";
+    const timePredicate = exact
+      ? "(? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)"
+      : "(? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)";
     return this.database
       .prepare(`
         SELECT
-          COALESCE(SUM(event_count), 0) AS event_count,
+          COALESCE(${eventCount}, 0) AS event_count,
           COUNT(DISTINCT session_id) AS session_count,
           COUNT(DISTINCT home_id) AS home_count,
           COALESCE(SUM(total), 0) AS total,
@@ -701,23 +706,28 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM event_rollups
-        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
+        FROM ${table}
+        WHERE ${timePredicate}
           AND (? IS NULL OR session_id = ?)
       `)
       .get(...scopedRangeParameters(range, sessionId));
   }
 
-  groupedRange(column, range, orderBy = "total DESC", sessionId = "") {
+  groupedRange(column, range, orderBy = "total DESC", sessionId = "", exact = false) {
     const allowedColumns = new Set(["channel", "home_label", "model", "project", "hour_key", "day_key", "week_key", "month_key"]);
     if (!allowedColumns.has(column)) {
       throw new Error(`不支持的聚合字段：${column}`);
     }
+    const table = exact ? "events" : "event_rollups";
+    const eventCount = exact ? "COUNT(*)" : "SUM(event_count)";
+    const timePredicate = exact
+      ? "(? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)"
+      : "(? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)";
     const rows = this.database
       .prepare(`
         SELECT
           ${column} AS key,
-          COALESCE(SUM(event_count), 0) AS count,
+          COALESCE(${eventCount}, 0) AS count,
           COUNT(DISTINCT session_id) AS sessions,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
@@ -725,8 +735,8 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM event_rollups
-        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
+        FROM ${table}
+        WHERE ${timePredicate}
           AND (? IS NULL OR session_id = ?)
         GROUP BY ${column}
         ORDER BY ${orderBy}
@@ -741,7 +751,7 @@ export class UsageStore {
     }));
   }
 
-  timelineRange(range, bucket, sessionId = "") {
+  timelineRange(range, bucket, sessionId = "", exact = false) {
     const bucketColumns = {
       hour: "hour_key",
       day: "day_key",
@@ -749,13 +759,18 @@ export class UsageStore {
       month: "month_key",
     };
     const bucketColumn = bucketColumns[bucket] || bucketColumns.day;
-    const rows = this.groupedRange(bucketColumn, range, "key ASC", sessionId);
+    const rows = this.groupedRange(bucketColumn, range, "key ASC", sessionId, exact);
+    const table = exact ? "events" : "event_rollups";
+    const eventCount = exact ? "COUNT(*)" : "SUM(event_count)";
+    const timePredicate = exact
+      ? "(? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)"
+      : "(? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)";
     const channelRows = this.database
       .prepare(`
         SELECT
           ${bucketColumn} AS bucket_key,
           channel AS key,
-          COALESCE(SUM(event_count), 0) AS count,
+          COALESCE(${eventCount}, 0) AS count,
           COUNT(DISTINCT session_id) AS sessions,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
@@ -763,8 +778,8 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM event_rollups
-        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
+        FROM ${table}
+        WHERE ${timePredicate}
           AND (? IS NULL OR session_id = ?)
         GROUP BY ${bucketColumn}, channel
         ORDER BY ${bucketColumn} ASC, total DESC
@@ -807,10 +822,13 @@ export class UsageStore {
       boundaryEvents.push({ timestamp: new Date(Number(bounds.maximum)).toISOString() });
     }
     const range = resolveDateRange(filters, boundaryEvents);
-    const aggregate = this.aggregateRange(range, sessionId);
+    // Hourly rollups are exact only when the requested range follows bucket
+    // boundaries. A rolling 24-hour range can cut through both boundary hours.
+    const exact = Boolean(range.rolling);
+    const aggregate = this.aggregateRange(range, sessionId, exact);
     const totals = usageFromRow(aggregate);
     const previousRange = previousUsageRange(range);
-    const previousAggregate = previousRange ? this.aggregateRange(previousRange, sessionId) : null;
+    const previousAggregate = previousRange ? this.aggregateRange(previousRange, sessionId, exact) : null;
     const comparison = usageComparisonFromAggregates({
       range,
       currentTotals: totals,
@@ -834,11 +852,11 @@ export class UsageStore {
       eventCount: Number(aggregate.event_count || 0),
       sessionCount: Number(aggregate.session_count || 0),
       homeCount: Number(aggregate.home_count || 0),
-      timeline: this.timelineRange(range, bucket, sessionId),
-      channels: this.groupedRange("channel", range, "total DESC", sessionId),
-      homes: this.groupedRange("home_label", range, "total DESC", sessionId),
-      models: this.groupedRange("model", range, "total DESC", sessionId),
-      projects: this.groupedRange("project", range, "total DESC", sessionId),
+      timeline: this.timelineRange(range, bucket, sessionId, exact),
+      channels: this.groupedRange("channel", range, "total DESC", sessionId, exact),
+      homes: this.groupedRange("home_label", range, "total DESC", sessionId, exact),
+      models: this.groupedRange("model", range, "total DESC", sessionId, exact),
+      projects: this.groupedRange("project", range, "total DESC", sessionId, exact),
     };
     if (this.summaryCache.size >= 100) {
       this.summaryCache.delete(this.summaryCache.keys().next().value);
