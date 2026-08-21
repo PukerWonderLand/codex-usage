@@ -68,6 +68,11 @@ test("UsageStore 首次同步并只重建变化文件", async () => {
     assert.equal(firstMetadata.sessionCount, 1);
     assert.equal(firstSummary.totals.total, 123);
 
+    const baseline = new DatabaseSync(databaseFile);
+    const firstEventId = baseline.prepare("SELECT id FROM events").get().id;
+    baseline.prepare("UPDATE source_files SET parser_state = ''").run();
+    baseline.close();
+
     await appendFile(sessionFile, JSON.stringify(tokenRow("2026-07-12T01:02:00.000Z", 200, 160, 30, 40, 7)) + "\n");
 
     const refreshed = await store.sync();
@@ -78,6 +83,14 @@ test("UsageStore 首次同步并只重建变化文件", async () => {
     assert.equal(refreshedSummary.eventCount, 2);
     assert.equal(refreshedSummary.totals.total, 200);
     assert.equal(unchanged.updatedFileCount, 0);
+    const verification = new DatabaseSync(databaseFile, { readOnly: true });
+    const eventIds = verification.prepare("SELECT id FROM events ORDER BY id").all().map((row) => row.id);
+    const source = verification.prepare("SELECT size, indexed_offset, parser_state FROM source_files").get();
+    verification.close();
+    assert.equal(eventIds[0], firstEventId);
+    assert.equal(eventIds.length, 2);
+    assert.equal(Number(source.indexed_offset), Number(source.size));
+    assert.ok(source.parser_state.length > 0);
   } finally {
     store.close();
   }
@@ -128,6 +141,58 @@ test("UsageStore 使用 Codex 状态库中的会话名称和中文标题", async
     const [session] = store.listSessions();
     assert.equal(session.name, "我的自定义名称");
     assert.equal(session.title, "自动生成的中文标题");
+  } finally {
+    store.close();
+  }
+});
+
+test("UsageStore keeps an incomplete JSONL tail pending until the line is complete", async () => {
+  const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
+  const store = new UsageStore({ homeDir, databaseFile });
+  const nextLine = JSON.stringify(tokenRow("2026-07-12T01:02:00.000Z", 200, 160, 30, 40, 7));
+  const split = Math.floor(nextLine.length / 2);
+
+  try {
+    await store.sync();
+    await appendFile(sessionFile, nextLine.slice(0, split));
+    await store.sync();
+    const pending = store.summarize({ preset: "all", bucket: "day" });
+    assert.equal(pending.eventCount, 1);
+    assert.equal(pending.totals.total, 123);
+
+    await appendFile(sessionFile, nextLine.slice(split) + "\n");
+    await store.sync();
+    const completed = store.summarize({ preset: "all", bucket: "day" });
+    assert.equal(completed.eventCount, 2);
+    assert.equal(completed.totals.total, 200);
+  } finally {
+    store.close();
+  }
+});
+
+test("UsageStore limits oversized state database titles in the sessions response", async () => {
+  const { homeDir, databaseFile } = await makeStoreFixture();
+  const codexHome = path.join(homeDir, ".codex");
+  const state = new DatabaseSync(path.join(codexHome, "state_5.sqlite"));
+  state.exec(`
+    CREATE TABLE threads (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      title TEXT NOT NULL,
+      first_user_message TEXT NOT NULL DEFAULT '',
+      preview TEXT NOT NULL DEFAULT ''
+    );
+  `);
+  state.prepare("INSERT INTO threads (id, name, title) VALUES (?, ?, ?)")
+    .run("store-session", "", `oversized ${"title ".repeat(1000)}`);
+  state.close();
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    await store.sync();
+    const [session] = store.listSessions();
+    assert.equal(session.title.length, 240);
+    assert.ok(!session.title.includes("\n"));
   } finally {
     store.close();
   }

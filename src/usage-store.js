@@ -16,7 +16,7 @@ import {
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 
-const STORE_SCHEMA_VERSION = 2;
+const STORE_SCHEMA_VERSION = 4;
 
 function localDateKey(date) {
   const year = date.getFullYear();
@@ -60,6 +60,14 @@ function scopedRangeParameters(range, sessionId = "") {
 }
 
 const THREAD_LABEL_CACHE = new Map();
+const MAX_THREAD_LABEL_LENGTH = 240;
+
+function compactThreadLabel(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/\s+/g, " ").slice(0, MAX_THREAD_LABEL_LENGTH);
+}
 
 function threadLabelsByHome(homes) {
   const labels = new Map();
@@ -125,8 +133,8 @@ function threadLabelsByHome(homes) {
           const value = row.name || title;
           if (typeof value === "string" && value.trim()) {
             homeLabels.set(row.id, {
-              name: typeof row.name === "string" ? row.name.trim() : "",
-              title: typeof title === "string" ? title.trim() : "",
+              name: compactThreadLabel(row.name),
+              title: compactThreadLabel(title),
             });
           }
         }
@@ -182,6 +190,8 @@ export class UsageStore {
         home_path TEXT NOT NULL,
         size INTEGER NOT NULL,
         mtime_ms REAL NOT NULL,
+        indexed_offset INTEGER NOT NULL DEFAULT 0,
+        parser_state TEXT NOT NULL DEFAULT '',
         indexed_at TEXT NOT NULL
       ) STRICT;
       CREATE TABLE IF NOT EXISTS events (
@@ -205,17 +215,71 @@ export class UsageStore {
         output INTEGER NOT NULL,
         reasoning INTEGER NOT NULL
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS event_rollups (
+        source_path TEXT NOT NULL REFERENCES source_files(path) ON DELETE CASCADE,
+        min_timestamp_ms INTEGER NOT NULL,
+        max_timestamp_ms INTEGER NOT NULL,
+        session_id TEXT NOT NULL,
+        home_id TEXT NOT NULL,
+        home_label TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        project TEXT NOT NULL,
+        model TEXT NOT NULL,
+        hour_key TEXT NOT NULL,
+        day_key TEXT NOT NULL,
+        week_key TEXT NOT NULL,
+        month_key TEXT NOT NULL,
+        event_count INTEGER NOT NULL,
+        total INTEGER NOT NULL,
+        input INTEGER NOT NULL,
+        cached INTEGER NOT NULL,
+        cache_write INTEGER NOT NULL DEFAULT 0,
+        output INTEGER NOT NULL,
+        reasoning INTEGER NOT NULL,
+        PRIMARY KEY (source_path, hour_key, session_id, home_id, home_label, channel, project, model)
+      ) STRICT;
       CREATE INDEX IF NOT EXISTS events_timestamp_idx ON events(timestamp_ms);
+      CREATE INDEX IF NOT EXISTS events_source_path_idx ON events(source_path);
       CREATE INDEX IF NOT EXISTS events_home_idx ON events(home_id);
       CREATE INDEX IF NOT EXISTS events_channel_idx ON events(channel);
       CREATE INDEX IF NOT EXISTS events_project_idx ON events(project);
       CREATE INDEX IF NOT EXISTS events_model_idx ON events(model);
+      CREATE INDEX IF NOT EXISTS event_rollups_time_idx ON event_rollups(min_timestamp_ms, max_timestamp_ms);
+      CREATE INDEX IF NOT EXISTS event_rollups_session_idx ON event_rollups(session_id);
     `);
     const version = Number(this.database.prepare("PRAGMA user_version").get().user_version || 0);
     if (version === 1) {
       this.database.exec("ALTER TABLE events ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0");
-    } else if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
+    }
+    if (version > STORE_SCHEMA_VERSION) {
       throw new Error(`不支持的用量索引版本：${version}`);
+    }
+    const sourceColumns = new Set(
+      this.database.prepare("PRAGMA table_info(source_files)").all().map((column) => column.name),
+    );
+    if (!sourceColumns.has("indexed_offset")) {
+      this.database.exec("ALTER TABLE source_files ADD COLUMN indexed_offset INTEGER NOT NULL DEFAULT 0");
+      this.database.exec("UPDATE source_files SET indexed_offset = size");
+    }
+    if (!sourceColumns.has("parser_state")) {
+      this.database.exec("ALTER TABLE source_files ADD COLUMN parser_state TEXT NOT NULL DEFAULT ''");
+    }
+    const rollupCount = Number(this.database.prepare("SELECT COUNT(*) AS count FROM event_rollups").get().count || 0);
+    const eventCount = Number(this.database.prepare("SELECT COUNT(*) AS count FROM events").get().count || 0);
+    if (rollupCount === 0 && eventCount > 0) {
+      this.database.exec(`
+        INSERT INTO event_rollups (
+          source_path, min_timestamp_ms, max_timestamp_ms, session_id, home_id, home_label,
+          channel, project, model, hour_key, day_key, week_key, month_key, event_count,
+          total, input, cached, cache_write, output, reasoning
+        )
+        SELECT
+          source_path, MIN(timestamp_ms), MAX(timestamp_ms), session_id, home_id, home_label,
+          channel, project, model, hour_key, day_key, week_key, month_key, COUNT(*),
+          SUM(total), SUM(input), SUM(cached), SUM(cache_write), SUM(output), SUM(reasoning)
+        FROM events
+        GROUP BY source_path, hour_key, session_id, home_id, home_label, channel, project, model
+      `);
     }
     this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     this.generatedAt = this.readMeta("generated_at");
@@ -251,11 +315,52 @@ export class UsageStore {
     return { files, warnings };
   }
 
-  async replaceFile({ filePath, source, info }) {
+  baselineParserState(filePath) {
+    const totals = this.database
+      .prepare(`
+        SELECT
+          COALESCE(SUM(total), 0) AS total,
+          COALESCE(SUM(input), 0) AS input,
+          COALESCE(SUM(cached), 0) AS cached,
+          COALESCE(SUM(cache_write), 0) AS cache_write,
+          COALESCE(SUM(output), 0) AS output,
+          COALESCE(SUM(reasoning), 0) AS reasoning
+        FROM events WHERE source_path = ?
+      `)
+      .get(filePath);
+    const latest = this.database
+      .prepare(`
+        SELECT timestamp_ms, session_id, channel, project, model
+        FROM events WHERE source_path = ?
+        ORDER BY timestamp_ms DESC, id DESC LIMIT 1
+      `)
+      .get(filePath);
+    if (!latest) {
+      return null;
+    }
+    return {
+      meta: {
+        id: latest.session_id,
+        source: "",
+        originator: "",
+        cwd: latest.project,
+      },
+      model: latest.model,
+      firstAt: "",
+      lastAt: new Date(Number(latest.timestamp_ms)).toISOString(),
+      channel: latest.channel,
+      previousCumulative: usageFromRow(totals),
+    };
+  }
+
+  async updateFile({ filePath, source, info }, existing = null, { force = false } = {}) {
     const database = this.database;
     const insertSource = database.prepare(`
-      INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO source_files (
+        path, kind, home_id, home_label, home_path, size, mtime_ms,
+        indexed_offset, parser_state, indexed_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
         kind = excluded.kind,
         home_id = excluded.home_id,
@@ -263,6 +368,8 @@ export class UsageStore {
         home_path = excluded.home_path,
         size = excluded.size,
         mtime_ms = excluded.mtime_ms,
+        indexed_offset = excluded.indexed_offset,
+        parser_state = excluded.parser_state,
         indexed_at = excluded.indexed_at
     `);
     const insertEvent = database.prepare(`
@@ -271,21 +378,75 @@ export class UsageStore {
         hour_key, day_key, week_key, month_key, total, input, cached, cache_write, output, reasoning
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const upsertRollup = database.prepare(`
+      INSERT INTO event_rollups (
+        source_path, min_timestamp_ms, max_timestamp_ms, session_id, home_id, home_label,
+        channel, project, model, hour_key, day_key, week_key, month_key, event_count,
+        total, input, cached, cache_write, output, reasoning
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (source_path, hour_key, session_id, home_id, home_label, channel, project, model)
+      DO UPDATE SET
+        min_timestamp_ms = MIN(min_timestamp_ms, excluded.min_timestamp_ms),
+        max_timestamp_ms = MAX(max_timestamp_ms, excluded.max_timestamp_ms),
+        event_count = event_count + 1,
+        total = total + excluded.total,
+        input = input + excluded.input,
+        cached = cached + excluded.cached,
+        cache_write = cache_write + excluded.cache_write,
+        output = output + excluded.output,
+        reasoning = reasoning + excluded.reasoning
+    `);
+    const sourceKind = source.kind || "codex";
+    let append = Boolean(
+      !force
+      && existing
+      && sourceKind === existing.kind
+      && source.id === existing.home_id
+      && info.size > Number(existing.size)
+      && Number(existing.indexed_offset) <= Number(existing.size),
+    );
+    let offset = append ? Number(existing.indexed_offset) : 0;
+    let parserState = null;
+    if (append && existing.parser_state) {
+      try {
+        parserState = JSON.parse(existing.parser_state);
+      } catch {
+        append = false;
+      }
+    } else if (append && sourceKind !== "project-log") {
+      parserState = this.baselineParserState(filePath);
+      offset = Number(existing.size);
+      append = Boolean(parserState);
+    } else if (append) {
+      append = false;
+    }
+
     database.exec("BEGIN IMMEDIATE");
     try {
       insertSource.run(
         filePath,
-        source.kind || "codex",
+        sourceKind,
         source.id,
         source.label,
         source.path,
         info.size,
         info.mtimeMs,
+        offset,
+        parserState ? JSON.stringify(parserState) : "",
         new Date().toISOString(),
       );
-      database.prepare("DELETE FROM events WHERE source_path = ?").run(filePath);
-      await streamUsageFileEvents(filePath, source, (event) => {
+      if (!append) {
+        database.prepare("DELETE FROM events WHERE source_path = ?").run(filePath);
+        database.prepare("DELETE FROM event_rollups WHERE source_path = ?").run(filePath);
+      }
+      const result = await streamUsageFileEvents(filePath, source, (event) => {
         const date = new Date(event.timestampMs);
+        const hourKey = localHourKey(date);
+        const dayKey = localDateKey(date);
+        const weekKey = localDateKey(startOfLocalWeek(date));
+        const monthKey = dayKey.slice(0, 7);
+        const project = event.project || "Unknown cwd";
+        const model = event.model || "Unknown model";
         insertEvent.run(
           filePath,
           event.timestampMs,
@@ -293,12 +454,12 @@ export class UsageStore {
           event.homeId,
           event.homeLabel,
           event.channel,
-          event.project || "Unknown cwd",
-          event.model || "Unknown model",
-          localHourKey(date),
-          localDateKey(date),
-          localDateKey(startOfLocalWeek(date)),
-          localDateKey(date).slice(0, 7),
+          project,
+          model,
+          hourKey,
+          dayKey,
+          weekKey,
+          monthKey,
           event.usage.total,
           event.usage.input,
           event.usage.cached,
@@ -306,12 +467,69 @@ export class UsageStore {
           event.usage.output,
           event.usage.reasoning,
         );
-      });
+        upsertRollup.run(
+          filePath,
+          event.timestampMs,
+          event.timestampMs,
+          event.sessionId,
+          event.homeId,
+          event.homeLabel,
+          event.channel,
+          project,
+          model,
+          hourKey,
+          dayKey,
+          weekKey,
+          monthKey,
+          event.usage.total,
+          event.usage.input,
+          event.usage.cached,
+          event.usage.cacheWrite,
+          event.usage.output,
+          event.usage.reasoning,
+        );
+      }, { offset: append ? offset : 0, state: append ? parserState : null });
+      database
+        .prepare(`
+          UPDATE source_files
+          SET size = ?, mtime_ms = ?, indexed_offset = ?, parser_state = ?, indexed_at = ?
+          WHERE path = ?
+        `)
+        .run(
+          info.size,
+          info.mtimeMs,
+          result.offset,
+          JSON.stringify(result.state || {}),
+          new Date().toISOString(),
+          filePath,
+        );
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  async syncFile(filePath, source) {
+    await this.open();
+    const info = await stat(filePath);
+    const existing = this.database
+      .prepare(`
+        SELECT kind, home_id, size, mtime_ms, indexed_offset, parser_state
+        FROM source_files WHERE path = ?
+      `)
+      .get(filePath);
+    if (existing && Number(existing.size) === info.size && Number(existing.mtime_ms) === info.mtimeMs) {
+      return { updated: false, appended: false };
+    }
+    const appended = Boolean(existing && info.size > Number(existing.size));
+    await this.updateFile({ filePath, source, info }, existing);
+    this.generatedAt = new Date().toISOString();
+    this.writeMeta("generated_at", this.generatedAt);
+    this.summaryCache.clear();
+    this.metadataCache = null;
+    this.sessionRowsCache = null;
+    return { updated: true, appended };
   }
 
   async sync({ force = false, options } = {}) {
@@ -326,13 +544,16 @@ export class UsageStore {
 
     for (const file of files) {
       const existing = this.database
-        .prepare("SELECT size, mtime_ms FROM source_files WHERE path = ?")
+        .prepare(`
+          SELECT kind, home_id, size, mtime_ms, indexed_offset, parser_state
+          FROM source_files WHERE path = ?
+        `)
         .get(file.filePath);
       if (!force && existing && Number(existing.size) === file.info.size && Number(existing.mtime_ms) === file.info.mtimeMs) {
         continue;
       }
       try {
-        await this.replaceFile(file);
+        await this.updateFile(file, existing, { force });
         updatedFileCount += 1;
       } catch (error) {
         warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
@@ -368,13 +589,13 @@ export class UsageStore {
       return this.metadataCache;
     }
     const totals = this.database
-      .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
+      .prepare("SELECT COALESCE(SUM(event_count), 0) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM event_rollups")
       .get();
     const homeRows = new Map(
       this.database
         .prepare(`
-          SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count
-          FROM events GROUP BY home_id
+          SELECT home_id, COALESCE(SUM(event_count), 0) AS event_count, COUNT(DISTINCT session_id) AS session_count
+          FROM event_rollups GROUP BY home_id
         `)
         .all()
         .map((row) => [row.home_id, row]),
@@ -406,19 +627,19 @@ export class UsageStore {
         SELECT
           session_id AS id,
           MAX(home_id) AS home_id,
-          MIN(timestamp_ms) AS first_at,
-          MAX(timestamp_ms) AS last_at,
+          MIN(min_timestamp_ms) AS first_at,
+          MAX(max_timestamp_ms) AS last_at,
           MAX(channel) AS channel,
           MAX(project) AS project,
           MAX(model) AS model,
-          COUNT(*) AS event_count,
+          COALESCE(SUM(event_count), 0) AS event_count,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM events
+        FROM event_rollups
         GROUP BY session_id
         ORDER BY last_at DESC
         `)
@@ -445,14 +666,14 @@ export class UsageStore {
     const row = this.database
       .prepare(`
         SELECT
-          events.session_id,
+          event_rollups.session_id,
           source_files.path AS file_path,
           source_files.home_id,
           source_files.home_label,
           source_files.home_path
-        FROM events
-        JOIN source_files ON source_files.path = events.source_path
-        WHERE events.session_id = ?
+        FROM event_rollups
+        JOIN source_files ON source_files.path = event_rollups.source_path
+        WHERE event_rollups.session_id = ?
         LIMIT 1
       `)
       .get(sessionId);
@@ -471,7 +692,7 @@ export class UsageStore {
     return this.database
       .prepare(`
         SELECT
-          COUNT(*) AS event_count,
+          COALESCE(SUM(event_count), 0) AS event_count,
           COUNT(DISTINCT session_id) AS session_count,
           COUNT(DISTINCT home_id) AS home_count,
           COALESCE(SUM(total), 0) AS total,
@@ -480,8 +701,8 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM events
-        WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+        FROM event_rollups
+        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
           AND (? IS NULL OR session_id = ?)
       `)
       .get(...scopedRangeParameters(range, sessionId));
@@ -496,7 +717,7 @@ export class UsageStore {
       .prepare(`
         SELECT
           ${column} AS key,
-          COUNT(*) AS count,
+          COALESCE(SUM(event_count), 0) AS count,
           COUNT(DISTINCT session_id) AS sessions,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
@@ -504,8 +725,8 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM events
-        WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+        FROM event_rollups
+        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
           AND (? IS NULL OR session_id = ?)
         GROUP BY ${column}
         ORDER BY ${orderBy}
@@ -534,7 +755,7 @@ export class UsageStore {
         SELECT
           ${bucketColumn} AS bucket_key,
           channel AS key,
-          COUNT(*) AS count,
+          COALESCE(SUM(event_count), 0) AS count,
           COUNT(DISTINCT session_id) AS sessions,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
@@ -542,8 +763,8 @@ export class UsageStore {
           COALESCE(SUM(cache_write), 0) AS cache_write,
           COALESCE(SUM(output), 0) AS output,
           COALESCE(SUM(reasoning), 0) AS reasoning
-        FROM events
-        WHERE (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?)
+        FROM event_rollups
+        WHERE (? IS NULL OR max_timestamp_ms >= ?) AND (? IS NULL OR min_timestamp_ms <= ?)
           AND (? IS NULL OR session_id = ?)
         GROUP BY ${bucketColumn}, channel
         ORDER BY ${bucketColumn} ASC, total DESC
@@ -576,7 +797,7 @@ export class UsageStore {
     }
     const sessionId = filters.sessionId || "";
     const bounds = this.database
-      .prepare("SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events WHERE (? IS NULL OR session_id = ?)")
+      .prepare("SELECT MIN(min_timestamp_ms) AS minimum, MAX(max_timestamp_ms) AS maximum FROM event_rollups WHERE (? IS NULL OR session_id = ?)")
       .get(sessionId || null, sessionId || null);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {

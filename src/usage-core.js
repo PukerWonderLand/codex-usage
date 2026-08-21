@@ -731,19 +731,52 @@ function createStringInterner() {
   };
 }
 
-async function streamSessionUsageFileEvents(filePath, home, onEvent) {
-  const meta = {
-    id: fallbackSessionId(filePath),
-    source: "",
-    originator: "",
-    cwd: "",
-  };
-  let model = "";
-  let firstAt = "";
-  let lastAt = "";
-  let previousCumulative = emptyUsage();
+async function streamCompleteJsonlRows(filePath, startOffset, onRow) {
+  let pending = Buffer.alloc(0);
+  let completeOffset = startOffset;
+  const input = createReadStream(filePath, { start: startOffset });
 
-  for await (const row of readJsonlRows(filePath)) {
+  for await (const chunk of input) {
+    pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
+    let newlineIndex = pending.indexOf(0x0a);
+    while (newlineIndex !== -1) {
+      let line = pending.subarray(0, newlineIndex);
+      pending = pending.subarray(newlineIndex + 1);
+      completeOffset += newlineIndex + 1;
+      if (line.at(-1) === 0x0d) {
+        line = line.subarray(0, -1);
+      }
+      if (line.length) {
+        try {
+          await onRow(JSON.parse(line.toString("utf8")));
+        } catch {
+          // Ignore malformed complete rows while retaining the byte boundary.
+        }
+      }
+      newlineIndex = pending.indexOf(0x0a);
+    }
+  }
+  return completeOffset;
+}
+
+async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {}) {
+  const saved = options.state || {};
+  const meta = {
+    id: saved.meta?.id || fallbackSessionId(filePath),
+    source: saved.meta?.source || "",
+    originator: saved.meta?.originator || "",
+    cwd: saved.meta?.cwd || "",
+  };
+  let model = saved.model || "";
+  let firstAt = saved.firstAt || "";
+  let lastAt = saved.lastAt || "";
+  let channelOverride = saved.channel || "";
+  let previousCumulative = emptyUsage();
+  for (const field of USAGE_FIELDS) {
+    previousCumulative[field] = Number(saved.previousCumulative?.[field] || 0);
+  }
+
+  const offset = await streamCompleteJsonlRows(filePath, Number(options.offset || 0), async (row) => {
     if (row.timestamp) {
       firstAt ||= row.timestamp;
       lastAt = row.timestamp;
@@ -754,16 +787,17 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent) {
       meta.source = row.payload?.source || meta.source;
       meta.originator = row.payload?.originator || meta.originator;
       meta.cwd = row.payload?.cwd || meta.cwd;
-      continue;
+      channelOverride = "";
+      return;
     }
 
     if (row.type === "turn_context") {
       model = row.payload?.model || model;
-      continue;
+      return;
     }
 
     if (row.type !== "event_msg" || row.payload?.type !== "token_count") {
-      continue;
+      return;
     }
 
     const { cumulative, last } = readTokenUsage(row.payload);
@@ -776,18 +810,18 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent) {
     }
 
     if (isZeroUsage(increment)) {
-      continue;
+      return;
     }
 
-    const channel = classifyChannel({
-      originator: meta.originator,
-      source: meta.source,
-      homeLabel: home.homeLabel || home.label,
-    });
+    const channel = channelOverride || classifyChannel({
+        originator: meta.originator,
+        source: meta.source,
+        homeLabel: home.homeLabel || home.label,
+      });
     const timestamp = row.timestamp || lastAt || firstAt;
     const timestampMs = Date.parse(timestamp);
     if (!Number.isFinite(timestampMs)) {
-      continue;
+      return;
     }
     await onEvent({
       timestampMs,
@@ -799,25 +833,36 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent) {
       model,
       usage: increment,
     });
-  }
+  });
+  return {
+    offset,
+    state: {
+      meta,
+      model,
+      firstAt,
+      lastAt,
+      channel: channelOverride,
+      previousCumulative,
+    },
+  };
 }
 
-async function streamProjectUsageFileEvents(filePath, source, onEvent) {
-  let rowNumber = 0;
+async function streamProjectUsageFileEvents(filePath, source, onEvent, options = {}) {
+  let rowNumber = Number(options.state?.rowNumber || 0);
 
-  for await (const row of readJsonlRows(filePath)) {
+  const offset = await streamCompleteJsonlRows(filePath, Number(options.offset || 0), async (row) => {
     rowNumber += 1;
     if (!isSupportedProjectLogRow(row)) {
-      continue;
+      return;
     }
     const timestamp = projectLogTimestamp(row);
     const time = Date.parse(timestamp);
     if (!Number.isFinite(time)) {
-      continue;
+      return;
     }
     const usage = projectLogUsage(row);
     if (isZeroUsage(usage)) {
-      continue;
+      return;
     }
 
     await onEvent({
@@ -830,15 +875,15 @@ async function streamProjectUsageFileEvents(filePath, source, onEvent) {
       model: row.model || "Unknown model",
       usage,
     });
-  }
+  });
+  return { offset, state: { rowNumber } };
 }
 
-export async function streamUsageFileEvents(filePath, source, onEvent) {
+export async function streamUsageFileEvents(filePath, source, onEvent, options = {}) {
   if (source.kind === "project-log") {
-    await streamProjectUsageFileEvents(filePath, source, onEvent);
-    return;
+    return streamProjectUsageFileEvents(filePath, source, onEvent, options);
   }
-  await streamSessionUsageFileEvents(filePath, source, onEvent);
+  return streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
 async function parseSessionFileForIndex(filePath, home, intern) {
