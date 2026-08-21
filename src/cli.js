@@ -394,7 +394,7 @@ function selectTurn(turns, { active = false, turnId } = {}) {
   return turns.findLast((turn) => turn.status === "completed") || turns.at(-1) || null;
 }
 
-async function latestTurn(args, explicitSessionId, explicitTurnId) {
+async function latestTurnWithSession(args, explicitSessionId, explicitTurnId) {
   const sessionId = explicitSessionId || readOption(args, "--session");
   const session = await findSessionFile(args, sessionId);
   if (!session) {
@@ -409,7 +409,11 @@ async function latestTurn(args, explicitSessionId, explicitTurnId) {
     const target = explicitTurnId ? `turn ${explicitTurnId}` : "a completed or active turn";
     throw new Error(`Could not find ${target} in session ${sessionId || path.basename(session.filePath)}.`);
   }
-  return turn;
+  return { turn, session };
+}
+
+async function latestTurn(args, explicitSessionId, explicitTurnId) {
+  return (await latestTurnWithSession(args, explicitSessionId, explicitTurnId)).turn;
 }
 
 async function printLatestTurn(args) {
@@ -426,13 +430,20 @@ async function handleHook(args) {
   const payload = payloadArg ? JSON.parse(payloadArg) : {};
   const sessionId = payload["thread-id"] || payload.thread_id || payload.sessionId;
   const turnId = payload["turn-id"] || payload.turn_id || payload.turnId;
-  const turn = await latestTurn(args, sessionId, turnId);
-  const snapshotPath = path.join(homedir(), ".codex-usage", "latest-turn.json");
+  const { turn, session } = await latestTurnWithSession(args, sessionId, turnId);
+  const stateHome = readOption(args, "--home-dir", homedir());
+  const snapshotPath = path.join(stateHome, ".codex-usage", "latest-turn.json");
   await mkdir(path.dirname(snapshotPath), { recursive: true });
   await writeFile(
     snapshotPath,
     JSON.stringify({ capturedAt: new Date().toISOString(), hook: payload, turn }, null, 2),
   );
+  const store = new UsageStore(reportOptions(args));
+  try {
+    await store.syncFile(session.filePath, session.home);
+  } finally {
+    store.close();
+  }
   printTurn(turn);
 }
 

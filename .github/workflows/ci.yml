@@ -10,10 +10,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -23,3 +24,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run ci
+      - name: Validate Windows deployment scripts
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\windows\Test-CodexUsageDeployment.ps1 -ScriptOnly -Json

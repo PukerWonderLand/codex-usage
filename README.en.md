@@ -122,7 +122,7 @@ Restart the background gateway:
 codex-usage restart
 ```
 
-The dashboard and `summary` keep a lightweight index at `~/.codex-usage/usage-index.sqlite`. The first run builds it row by row; later refreshes only rebuild changed log files, so historical events do not remain in the Node.js heap. To rebuild from scratch, stop the service, remove that SQLite file, and start the gateway again.
+The dashboard and `summary` keep a lightweight index at `~/.codex-usage/usage-index.sqlite`. The first run builds it row by row. A growing Codex JSONL file then resumes after its persisted byte offset and consumes only complete appended lines; an individual file is rebuilt only when it is replaced or truncated. To rebuild from scratch, stop the service, remove that SQLite file, and start the gateway again.
 
 Stop services registered by this tool:
 
@@ -171,6 +171,20 @@ notify = ["codex-usage", "hook"]
 The hook refreshes `~/.codex-usage/latest-turn.json` after every turn. Codex currently discards notify subprocess output, so an external utility cannot reliably inject text into the main TUI; use `codex-usage turn` or display the snapshot in a companion terminal.
 
 Costs are **API-equivalent estimates**, not ChatGPT or Codex subscription charges. GPT-5.6 Sol pricing is versioned in `src/pricing.js`, including the official long-context threshold and multipliers. Context headroom follows the Codex `/status` calculation with its 12K baseline reserve. Requests also show uncached input, cache hit rate, and detected context compaction.
+
+## Windows LAN Deployment
+
+On Windows 10/11, an administrator PowerShell can install a current-user scheduled task, restart supervisor, Codex hook, and a Private/LocalSubnet firewall rule:
+
+```powershell
+.\scripts\windows\Install-CodexUsage.ps1 -WhatIf
+.\scripts\windows\Install-CodexUsage.ps1
+.\scripts\windows\Test-CodexUsageDeployment.ps1
+```
+
+The installer backs up the user-level `~/.codex/config.toml` and preserves an existing `notify` command. The task runs after the current user signs in. The LAN dashboard uses unencrypted HTTP, so keep it on a trusted Private network and never expose it directly to the internet.
+
+See the [Windows LAN deployment guide](docs/windows-lan-deployment.en.md) for installation, remote acceptance, failure recovery, and rollback. Codex defines `notify` as a user-level command array that receives a JSON payload; see the [OpenAI configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
 ## Dashboard
 

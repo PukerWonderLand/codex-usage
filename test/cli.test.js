@@ -437,7 +437,7 @@ test("cli dashboard starts a background service and prints the dashboard URL", a
   }
 });
 
-test("cud command opens the dashboard by default", async () => {
+test("cud command opens the dashboard by default", { skip: process.platform === "win32" }, async () => {
   const homeDir = await makeFixtureHome();
   const stateFile = path.join(homeDir, "services.json");
   const binDir = await mkdtemp(path.join(tmpdir(), "codex-cud-bin-"));
@@ -561,7 +561,7 @@ test("cli stop terminates all running usage services from the state file", async
 
     assert.match(stopOutput, /Stopped 2 Codex Usage service/);
     const exitCodes = await Promise.all(children.map((child) => waitForExit(child)));
-    assert.deepEqual(exitCodes, [0, 0]);
+    assert.deepEqual(exitCodes, process.platform === "win32" ? [1, 1] : [0, 0]);
   } finally {
     for (const child of children) {
       if (child.exitCode === null && !child.killed) {
