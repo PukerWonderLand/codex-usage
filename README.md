@@ -123,7 +123,7 @@ codex-usage gateway
 codex-usage restart
 ```
 
-仪表盘和 `summary` 会把轻量索引保存在 `~/.codex-usage/usage-index.sqlite`。首次运行会逐行建立索引，之后只重建发生变化的日志文件，不会把全部历史事件长期保存在 Node.js 内存中。需要完全重建时，可以停止服务后删除该 SQLite 文件，再重新启动 gateway。
+仪表盘和 `summary` 会把轻量索引保存在 `~/.codex-usage/usage-index.sqlite`。首次运行会逐行建立索引；之后对持续增长的 Codex JSONL 只读取上次 byte offset 之后的完整新行，文件被替换或截短时才重建该文件。需要完全重建时，可以停止服务后删除该 SQLite 文件，再重新启动 gateway。
 
 停止通过本工具登记的服务：
 
@@ -174,6 +174,20 @@ notify = ["codex-usage", "hook"]
 费用是按日志中的每次请求计算的 **API 等价估算**，不是 ChatGPT/Codex 订阅账单。GPT-5.6 Sol 当前采用普通输入 `$5/M`、缓存输入 `$0.50/M`、输出 `$30/M`；单次请求输入超过 `272K` 时应用官方长上下文倍率。价格规则带版本日期，官方价格变化后应同步更新 `src/pricing.js`。
 
 上下文余量复现 Codex `/status` 的计算口径：从模型上下文窗口中预留 `12K` 基线后计算可用百分比。页面还会标记每次请求的非缓存输入、缓存命中率，以及上下文使用量下降时检测到的压缩事件。
+
+## Windows 局域网部署
+
+Windows 10/11 可以用管理员 PowerShell 安装当前用户专属的计划任务、自动恢复 supervisor、Codex Hook 和 Private/LocalSubnet 防火墙规则：
+
+```powershell
+.\scripts\windows\Install-CodexUsage.ps1 -WhatIf
+.\scripts\windows\Install-CodexUsage.ps1
+.\scripts\windows\Test-CodexUsageDeployment.ps1
+```
+
+安装器会备份用户级 `~/.codex/config.toml` 并保留已有 `notify` 命令。计划任务在当前用户登录后运行；局域网页面使用未加密 HTTP，只应部署在可信 Private 网络，不要直接映射到互联网。
+
+完整安装、远端验收、故障恢复与卸载说明见 [Windows 局域网部署指南](docs/windows-lan-deployment.md)。Codex 的 `notify` 是接收 JSON payload 的用户级命令数组，参见 [OpenAI 配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
 
 ## 网页仪表盘
 
