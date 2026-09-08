@@ -1,5 +1,7 @@
 # Codex Usage
 
+**Linux 联合部署：** [Hook、回答末尾用量报告、systemd 仪表盘与 SMB 对话归档](docs/linux-archive-deployment.md)。
+
 [简体中文](README.md) | [English](README.en.md)
 
 [在线静态演示](https://pukerwonderland.github.io/codex-usage/)

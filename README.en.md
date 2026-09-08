@@ -1,5 +1,7 @@
 # Codex Usage
 
+**Linux deployment:** [Hooks, per-answer usage reporting, systemd dashboard and SMB archive integration (Chinese)](docs/linux-archive-deployment.md).
+
 [简体中文](README.md) | [English](README.en.md)
 
 [Live static demo](https://pukerwonderland.github.io/codex-usage/)

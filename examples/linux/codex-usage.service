@@ -1,0 +1,14 @@
+[Unit]
+Description=Codex Usage Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/codex-usage
+ExecStart=/absolute/path/to/node --max-old-space-size=512 /absolute/path/to/codex-usage/src/cli.js run --host 127.0.0.1 --port 3765
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target
